@@ -1,5 +1,5 @@
 /*
- * SPDX-License-Identifier: GPL-2.0-only OR Apache-2.0
+ * SPDX-License-Identifier: Proprietary - Quimera Laboratory (All Rights Reserved)
  *
  * BiChronos Engine v9.0 - Core Diffeomorphic Flow, Spatial Taylor (R_2 == 0) & Reprocessing Kernel
  *

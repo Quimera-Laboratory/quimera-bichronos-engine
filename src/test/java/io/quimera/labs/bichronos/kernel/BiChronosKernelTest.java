@@ -1,5 +1,5 @@
 /*
- * SPDX-License-Identifier: GPL-2.0-only OR Apache-2.0
+ * SPDX-License-Identifier: Proprietary - Quimera Laboratory (All Rights Reserved)
  *
  * BiChronos Engine v8.0 - Comprehensive Verification Test Suite
  * Validates Scenarios A, B, C (Tables 1, 6, 7, 8), all 20 Invariants across
