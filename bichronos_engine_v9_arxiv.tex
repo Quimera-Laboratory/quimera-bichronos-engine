@@ -1,0 +1,1153 @@
+\documentclass[11pt, a4paper]{article}
+\usepackage[a4paper, margin=2.2cm]{geometry}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{enumitem}
+\setlist[itemize]{label=-}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage[table]{xcolor}
+\usepackage{hyperref}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!60!black,
+    citecolor=blue!60!black,
+    urlcolor=blue!60!black
+}
+
+\newcommand{\doi}[1]{\href{https://doi.org/#1}{\texttt{doi:#1}}}
+
+\theoremstyle{definition}
+\newtheorem{definicao}{Definition}[section]
+\newtheorem{algoritmo}[definicao]{Algorithm}
+
+\theoremstyle{plain}
+\newtheorem{teorema}[definicao]{Theorem}
+\newtheorem{lema}[definicao]{Lemma}
+\newtheorem{proposicao}[definicao]{Proposition}
+\newtheorem{corolario}[definicao]{Corollary}
+
+\theoremstyle{remark}
+\newtheorem{observacao}[definicao]{Remark}
+
+\title{\textbf{BiChronos Engine: Value-Date Accounting Snapshot Reprocessing via Carathéodory Diffeomorphic Flows and Spatial Zero-Remainder Taylor Expansion (\texorpdfstring{$R_2 \equiv 0$}{R2 = 0})}\\[0.3em]\large Principal-Interest Ledger Decomposition \texorpdfstring{$(P, J)$}{(P, J)}, COSIF Reconciliation, and Formal Invariants in Bitemporal Systems}
+\author{\textbf{Gemirson dos Santos Silva}\thanks{Chief Research Architect, Quimera Labs. Contact: \texttt{contato@quimera.io}.}\\[0.2em]
+\normalsize Quimera Labs\\\small Center for Quantitative Architecture and Bitemporal Systems}
+\date{November 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+\noindent We establish the mathematical, financial, and accounting architecture of the \textbf{BiChronos Engine}, a deterministic kernel for the retroactive reprocessing of balance snapshots in bitemporal ledger systems (transaction recording time $\times$ economic value date). Financial time is formalized as a diffeomorphism of $\mathbb{R}$ and interest accrual as a flow $\varphi_{s,t}$ of spatial $C^1$-diffeomorphisms satisfying Carathéodory regularity conditions, rigorously accommodating piecewise-constant benchmark rates and non-business day plateaus. We prove that retroactive state evaluation from a control point is well-defined, invariant under transaction recording order, invertible, and, under a linear gross-of-tax regime, admits a \textbf{first-order spatial Taylor expansion with identically zero second-order remainder ($R_2 \equiv 0$)} on the manifold of states and cash flow events. We analytically contrast this property with the temporal expansion in $\Delta\theta$, whose Lagrange remainder is strictly positive under compound interest and zero only under simple interest. Coupled to the continuous ideal balance $V_k$, we formalize a two-dimensional accounting decomposition into Principal and Accrued Interest $(P_k, J_k)$, distinguishing pure translation deposits, proportional (\emph{pro-rata}) share liquidations, and the exact extinction of sub-cent residuals in full redemptions. We quantify penny divergence between iterative legacy stepping and closed-period cumulative evaluation, and formulate the complete BiChronos Engine algorithm featuring Ziv guard bands, general ledger accrual provision reconciliation under Brazilian central bank regulations (COSIF), and exact integer apportionment $\Delta S = \Delta P + \Delta J_{\text{pub}}$ overcoming rounding operator non-additivity. Finally, we formulate 20 formal invariants accompanied by verification procedures, demonstrate numerical stability across three canonical scenarios, and map every invariant to regulatory mandates under day-count conventions $B \in \{252, 360, 365\}$.
+
+\vspace{0.8em}
+\noindent\textbf{Keywords:} Bitemporal Systems, Carathéodory Flows, Spatial Taylor Expansion, Zero Remainder, Banking Ledger, Day-Count Conventions, Ziv Guard Band, COSIF.
+
+\vspace{0.4em}
+\noindent\textbf{Mathematics Subject Classification (2020):} 34A12, 37C10, 68U35, 91G60.
+
+\vspace{0.2em}
+\noindent\textbf{JEL Classification:} G10, G21, M41, C63.
+\end{abstract}
+
+\section{Bitemporal Structure, Intraday Conventions, and Tax Boundary}\label{sec:1}
+
+Dates are elements of $\mathbb{Z}$ (calendar days). We fix an initial anchor date $t_0 \in \mathbb{Z}$ and an initial balance $x_0 \in \mathbb{R}$. The distinction between recording date (transaction time) and effective date (valid time) constitutes the canonical bitemporal model in temporal database theory \cite{Snodgrass1999, JensenSnodgrass1999, Date2014, Kulkarni2012, Fowler2021}.
+
+\begin{definicao}[Event and bitemporal event base]\label{def:1.1}
+An event is a triple $e = (t_c(e), t_v(e), a(e)) \in \mathbb{Z} \times \mathbb{Z} \times \mathbb{R}$, where $t_c(e)$ is the recording date (transaction time), $t_v(e) > t_0$ is the value date (economic effective time), and $a(e)$ is the net monetary amount. An event base is a finite set $E$ of uniquely identified events (or a finite multiset). For any recording horizon $\sigma \in \mathbb{Z}$, the ledger state known up to version $\sigma$ is
+\[
+E_\sigma = \{e \in E : t_c(e) \le \sigma\}.
+\]
+\end{definicao}
+
+Operational corrections are represented exclusively by appending new events: the reversal of an earlier event $(t_c, t_v, a)$ recorded at $t_c' > t_c$ is the compensatory event $(t_c', t_v, -a)$. No event is physically mutated or deleted, ensuring $E_\sigma \subseteq E_{\sigma'}$ whenever $\sigma \le \sigma'$.
+
+\begin{definicao}[Nominal balance]\label{def:1.2}
+For evaluation date $\tau \in \mathbb{Z}$ and recording version $\sigma \in \mathbb{Z}$, the cumulative nominal balance is
+\[
+B(\tau; \sigma) = x_0 + \sum_{e \in E_\sigma,\, t_v(e) \le \tau} a(e).
+\]
+\end{definicao}
+
+\begin{lema}[Additivity across recording versions]\label{lem:1.3}
+If $\sigma \le \sigma'$, then
+\[
+B(\tau; \sigma') - B(\tau; \sigma) = \sum_{e \in E_{\sigma'} \setminus E_\sigma,\, t_v(e) \le \tau} a(e).
+\]
+\end{lema}
+\begin{proof}
+Because $E_\sigma \subseteq E_{\sigma'}$, the summation over $E_{\sigma'}$ partitions disjointly into the sum over $E_\sigma$ and the sum over $E_{\sigma'} \setminus E_\sigma$. Subtracting $B(\tau; \sigma)$ isolates the second sum.
+\end{proof}
+
+\begin{proposicao}[Past stability]\label{prop:1.4}
+If every event $e \in E_{\sigma'} \setminus E_\sigma$ satisfies $t_v(e) > \tau$, then $B(\tau; \sigma') = B(\tau; \sigma)$. Conversely, $B(\tau; \sigma') \neq B(\tau; \sigma)$ requires the existence of at least one event $e \in E$ with $\sigma < t_c(e) \le \sigma'$ and $t_v(e) \le \tau$ (a retroactive event relative to $\tau$).
+\end{proposicao}
+\begin{proof}
+Direct from Lemma~\ref{lem:1.3}: the index set $\{e \in E_{\sigma'} \setminus E_\sigma : t_v(e) \le \tau\}$ is empty in the former case, and non-zero evaluation requires a non-empty set.
+\end{proof}
+
+\begin{observacao}[Intraday timing convention: overnight accrual and end-of-day cutoff]\label{obs:1.5}
+To eliminate operational ambiguity regarding whether an event with value date $t_v = d_k$ accrues the daily factor $f_k$, the BiChronos Engine enforces the \textbf{end-of-day convention}: daily accrual factor $f_k$ for index $k$ remunerates the overnight holding of the closing balance from $d_{k-1}$ into $d_k$. Net cash flows with value date $t_v = d_k$ enter the position strictly after the application of $f_k$ (forming the closing position of $d_k$) and begin compounding over the subsequent overnight transition $d_k \to d_{k+1}$ under factor $f_{k+1}$. Should a specific product operate under a start-of-day convention (where morning deposits on $d_k$ earn interest during the night of $d_k$), the deposit is indexed to the $k-1 \to k$ transition or mapped to value date $d_{k-1}$.
+\end{observacao}
+
+\begin{observacao}[Tax scope: gross balances vs.\ FIFO tax-lot withholding]\label{obs:1.6}
+The zero-remainder spatial Taylor expansion and linear superposition theorems (Theorem~\ref{teo:4.5}, Corollary~\ref{cor:4.7}, and Invariant~I11) model \textbf{gross-of-tax balances} (or tax-exempt wholesale portfolios, such as interbank deposits, reserve accounts, and institutional liquidity facilities). In retail fixed-income or interest-bearing demand accounts subject to withholding tax schedules (such as Brazilian regressive IOF and progressive/regressive income tax tables) upon redemption, the net cash disbursed and tax withheld depend on the holding period of each consumed lot (FIFO rule) and the nonlinear ratio $\max(0, V_k - P_k)$. In such retail products, when a retroactive event $e \in N_\tau$ is inserted prior to an already executed taxed redemption at $v_{\text{red}} \in (t_v(e), \tau]$, retroactive evaluation from control point $v_* = t_v(e)$ (Theorem~\ref{teo:4.3}) remains mathematically valid, but requires re-evaluating the FIFO tax-lot engine and recalculating effective tax brackets at $v_{\text{red}}$, wherein nonlinear remainder terms quantify the tax variance between lots.
+\end{observacao}
+
+\section{Financial Time and Diffeomorphic Embedding}\label{sec:2}
+
+Let $B \in \{252, 360, 365\}$ be the annual day-count basis and $D \subseteq \mathbb{Z}$ the set of accrual dates: banking business days when $B = 252$, and all calendar days $\mathbb{Z}$ when $B \in \{360, 365\}$ (\S\ref{sec:2.1}). We enumerate $D$ as a strictly increasing sequence $(d_k)_{k \in \mathbb{Z}}$, with $d_0 = t_0$ (or $d_0 = \max\{d \in D : d \le t_0\}$).
+
+\medskip\noindent\textbf{Hypothesis (H1):} There exists $G \in \mathbb{N}$ such that $1 \le d_k - d_{k-1} \le G$ for all $k \in \mathbb{Z}$ (a bi-infinite calendar with holiday and weekend gaps uniformly bounded by $G$). For $s \le t$ in $\mathbb{Z}$, let $N(s,t) = \#(D \cap (s,t])$, and for $s > t$, let $N(s,t) = -N(t,s)$.
+
+\begin{lema}\label{lem:2.1}
+\begin{enumerate}[label=(\roman*)]
+    \item $N(s,u) = N(s,t) + N(t,u)$ for all $s, t, u \in \mathbb{Z}$.
+    \item $N(d_j, d_k) = k - j$ for $j \le k$.
+    \item When $B = 252$, $t \mapsto N(s,t)$ is non-injective: $N(s,t) = 0$ for consecutive dates $s < t$ containing no business days; when $B \in \{360, 365\}$, $N(s,t) = t - s$, which is strictly increasing and bijective.
+\end{enumerate}
+\end{lema}
+\begin{proof}
+(i) $(s,u] = (s,t] \sqcup (t,u]$ for $s \le t \le u$. (ii) $D \cap (d_j, d_k] = \{d_{j+1}, \dots, d_k\}$. (iii) For $B = 252$, Saturdays, Sundays, and official banking holidays do not belong to $D$; for $B \in \{360, 365\}$, $D = \mathbb{Z}$.
+\end{proof}
+
+By item (iii), for $B = 252$ the discrete step function $t \mapsto N(t_0, t)/B$ is flat across non-business days. Embedding the discrete calendar into a one-dimensional smooth manifold is achieved via piecewise affine interpolation and mollification; under $B \in \{360, 365\}$ the map is globally affine (Proposition~\ref{prop:2.5}).
+
+\begin{proposicao}[Diffeomorphic regularisation of civil time]\label{prop:2.2}
+Let $P : \mathbb{R} \to \mathbb{R}$ be the continuous piecewise affine function defined on the nodes of $D$ by $P(d_k) = k/B$. Let $\eta \in (0, 1/2]$ and let $\rho_\eta \in C_c^\infty([-\eta, \eta])$ be an even mollifier with $\rho_\eta \ge 0$ and $\int_{-\eta}^{\eta} \rho_\eta(y)\,dy = 1$. Then $\Theta_\eta = P * \rho_\eta$ satisfies:
+\begin{enumerate}[label=(\roman*)]
+    \item $\Theta_\eta \in C^\infty(\mathbb{R})$;
+    \item $\dfrac{1}{BG} \le \Theta_\eta'(t) \le \dfrac{1}{B}$ for all $t \in \mathbb{R}$;
+    \item $|\Theta_\eta(t) - P(t)| \le \dfrac{\eta}{B}$ for all $t \in \mathbb{R}$; in particular, at the nodes $d_k$, $|\Theta_\eta(d_k) - k/B| \le \dfrac{\eta}{2B}\left|\frac{1}{d_k - d_{k-1}} - \frac{1}{d_{k+1} - d_k}\right| < \dfrac{\eta}{B}$ (with $\Theta_\eta(d_k) = k/B$ exactly whenever $d_k - d_{k-1} = d_{k+1} - d_k$);
+    \item $\Theta_\eta$ is a $C^\infty$-diffeomorphism of $\mathbb{R}$ onto $\mathbb{R}$.
+\end{enumerate}
+\end{proposicao}
+\begin{proof}
+(i) Convolution of a continuous function with a compactly supported smooth kernel \cite[Chap.~4]{Brezis2011}. (ii) $P$ is locally absolutely continuous with derivative almost everywhere equal to $P'(t) = \frac{1}{B(d_k - d_{k-1})} \in [\frac{1}{BG}, \frac{1}{B}]$ on $(d_{k-1}, d_k)$; hence $\Theta_\eta' = P' * \rho_\eta$ takes values in the same interval. (iii) Because $P$ is $\frac{1}{B}$-Lipschitz, $|\Theta_\eta(t) - P(t)| \le \frac{1}{B}\int_{-\eta}^{\eta} |y|\rho_\eta(y)\,dy \le \frac{\eta}{B}$. (iv) $\Theta_\eta'(t) \ge \frac{1}{BG} > 0$ implies that $\Theta_\eta$ is a strictly increasing bijection of $\mathbb{R}$ onto $\mathbb{R}$ with $C^\infty$ inverse by the inverse function theorem \cite[vol.~2]{LimaAnalise2}.
+\end{proof}
+
+\begin{observacao}[Cohesion between diffeomorphism $\Theta_\eta$ and discrete plateau dynamics]\label{obs:2.3}
+To ensure that strict time bijection $\Theta_\eta$ under $B = 252$ does not introduce spurious interest accrual over weekends and holidays ($t \notin D$), the continuous formulation in Section~\ref{sec:3} is framed under \textbf{Carathéodory regularity conditions} (Hypothesis~H2). This allows the instantaneous interest rate $r(\theta)$ to be discontinuous (measurable in $L^\infty_{\text{loc}}(\mathbb{R})$) with support concentrated exclusively on the transformed business day intervals $[\Theta_\eta(d_k - 1), \Theta_\eta(d_k)]$ and identically zero ($r(\theta) = 0$) on transformed non-business intervals $(\Theta_\eta(d_{k-1}), \Theta_\eta(d_k - 1)]$. Consequently, the coordinate change $\Theta_\eta$ is a $C^\infty$-diffeomorphism, spatial flow $\varphi_{s,t} : \mathbb{R} \to \mathbb{R}$ is a $C^\infty$-diffeomorphism for every pair $(s,t)$, and the integrated interest rate across any weekend or holiday interval is identically zero ($\Phi_{s \to t} = \mathrm{id}_{\mathbb{R}}$), eliminating discrepancies between continuous modeling and discrete count $N(t_0, t)/B$.
+\end{observacao}
+
+\subsection{Day-Count Conventions: Bases 252, 360, and 365}\label{sec:2.1}
+
+Basis $B$ fixes the financial time metric according to contract specifications and market standards \cite{AssafNeto, Fabozzi2006, ISDA2006}.
+
+\begin{definicao}[Additive day-count convention]\label{def:2.4}
+An additive day-count convention is a pair $(g, B)$, with non-decreasing counting function $g : \mathbb{Z} \to \mathbb{Z}$ and $B \in \{252, 360, 365\}$; the day-count is $N(s,t) = g(t) - g(s)$. Examples: $B = 252$ with $g(t)$ equal to cumulative business days up to $t$ (ANBIMA / B3 calendar); $B = 360$ (Actual/360) or $B = 365$ (Actual/365 Fixed) with calendar days, $g(t) = t$. The 30E/360 convention with $g(y,m,d) = 360y + 30m + \min(d, 30)$ evaluates each date independently and likewise defines an additive count $N(s,u) = N(s,t) + N(t,u)$.
+\end{definicao}
+
+\begin{proposicao}[Bases 360 and 365: absence of plateaus]\label{prop:2.5}
+If $g(t) = t$ (calendar days), then $D = \mathbb{Z}$, $G = 1$ in (H1), $N(s,t) = t - s$, and $\Theta(t) = (t - t_0)/B$ is an affine $C^\infty$-diffeomorphism of $\mathbb{R}$ onto $\mathbb{R}$ with $\Theta'(t) \equiv 1/B$ and $\Theta(d_k) = k/B$ identically ($\eta = 0$).
+\end{proposicao}
+\begin{proof}
+Because $d_k = t_0 + k$, $P(t) = (t - t_0)/B$ is already smooth and affine, with strictly positive derivative $1/B > 0$ and global inverse $\theta \mapsto t_0 + B\theta$.
+\end{proof}
+
+\begin{observacao}[Cross-basis conversion]\label{obs:2.6}
+For an identical annual rate $i$, the compound accumulation factor over $[s,t]$ is $(1 + i)^{N(s,t)/B}$. Between $B = 252$ and $B' \in \{360, 365\}$, the ratio $N_{\text{bus}}/N_{\text{cal}}$ fluctuates depending on holiday and weekend densities; thus, no constant annual rate $i'$ can reproduce identical factors across all sub-periods, and changing bases requires full reprocessing under the target convention factors. Between 360 and 365, the mapping is strictly static: $(1 + i_{365}) = (1 + i_{360})^{365/360}$.
+\end{observacao}
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{@{}llcccccc@{}}
+\toprule
+\textbf{Basis $B$} & \textbf{Convention} & $n$ & $f_B$ & $F = f_B^n$ & $V$ & $S$ & \textbf{Yield} \\
+\midrule
+252 & Business days & 5 & $1.00040167$ & $1.0020099640$ & $1,002,009.9640$ & $1,002,009$ & $2,009$ \\
+360 & Calendar days & 7 & $1.00028115$ & $1.0019697107$ & $1,001,969.7107$ & $1,001,969$ & $1,969$ \\
+365 & Calendar days & 7 & $1.00027730$ & $1.0019427155$ & $1,001,942.7155$ & $1,001,942$ & $1,942$ \\
+\bottomrule
+\end{tabular}
+\caption{Benchmark annual rate ($10.65\%$), $x_0 = 1,000,000$ cents, from Friday Oct 16 to Friday Oct 23, 2026 (5 business days, 7 calendar days); daily factors truncated at 8 decimal places; rounding operator $\rho = \lfloor \cdot \rfloor$. Under bases 360 and 365 weekends accrue; ``Yield'' expressed in cents.}
+\label{tab:1}
+\end{table}
+
+\begin{observacao}[Invariance with respect to basis $B$]\label{obs:2.7}
+Sections~\ref{sec:3} through \ref{sec:6} depend on $B$ solely via daily factors $f_k = \lfloor 10^p(1 + i_k)^{1/B}\rfloor / 10^p$ and accumulation indices $k$; the 20 invariants (I1 to I20) hold identically across all three bases (Table~\ref{tab:5}).
+\end{observacao}
+
+\begin{observacao}[Ledger decomposition $(P, J)$ in compound and simple regimes]\label{obs:2.8}
+In both compound and simple regimes, banking accounting standards (e.g., COSIF) segregate balance states into two accounts: \textbf{Principal (or Entry Amortized Cost)} $P$ and \textbf{Accrued Interest} $J$, where total balance $V = P + J$.
+\begin{enumerate}[label=(\alph*)]
+    \item \emph{Under compound interest:} The continuous flow evolves on $(P, J) \in \mathbb{R}^2$ via $\varphi_{s,t}(P, J) = (P,\, P(F(s,t)-1) + F(s,t)J)$, whose coordinate sum is exactly $V(t) = P + J(t) = F(s,t)(P + J)$. The spatial Jacobian matrix is $\Big(\begin{smallmatrix} 1 & 0 \\ F(s,t)-1 & F(s,t) \end{smallmatrix}\Big)$, with determinant $F(s,t) > 0$ (a linear diffeomorphism of $\mathbb{R}^2$ with cocycle property and inverse $\varphi_{t,s}$).
+    \item \emph{Under simple interest:} Interest accrues exclusively on principal $P$, yielding the linear shear flow $\varphi_{s,t}(P, J) = (P,\, J + i P N(s,t)/B)$, with Jacobian determinant equal to $1$. Under simple interest, $\varphi_{s,t}(P, J)$ is affine in both state $(P, J)$ and temporal increment $\Delta\theta = N(s,t)/B$, exhibiting spatial and temporal Taylor expansions with identically zero remainders simultaneously.
+\end{enumerate}
+In both regimes, a pure deposit $a > 0$ acts as a translation on the first coordinate, $T_a(P, J) = (P + a, J)$, preserving $V^+ = V + a$. Withdrawals ($a < 0$) are formalized in Subsection~\ref{sec:5.2} (Hypothesis~H3).
+\end{observacao}
+
+\section{Accrual Flow Under Carathéodory Regularity Conditions}\label{sec:3}
+
+In financial time $\theta \in \mathbb{R}$ (in years of $B$ accrual days), the balance $x$ evolves according to the ordinary differential equation
+\begin{equation}\label{eq:edo}
+\frac{dx}{d\theta} = f(\theta, x).
+\end{equation}
+
+\noindent\textbf{Hypothesis (H2 — Carathéodory Regularity):} The vector field $f : \mathbb{R} \times \mathbb{R} \to \mathbb{R}$ satisfies: (i) for each $x \in \mathbb{R}$, the map $\theta \mapsto f(\theta, x)$ is Lebesgue measurable; (ii) for almost every $\theta \in \mathbb{R}$, $x \mapsto f(\theta, x)$ is of class $C^1(\mathbb{R})$, with $\theta \mapsto \partial_x f(\theta, x)$ measurable; and (iii) there exist non-negative locally integrable functions $\alpha, \beta \in L^1_{\text{loc}}(\mathbb{R})$ such that $|f(\theta, x)| \le \alpha(\theta)(1 + |x|)$ and $|\partial_x f(\theta, x)| \le \beta(\theta)$ on every compact spatial domain. (This hypothesis accommodates both smooth classical fields $f \in C^1(\mathbb{R} \times \mathbb{R})$ and piecewise-constant step functions with jumps at holidays and daily benchmark rate fixings.)
+
+\begin{lema}[Global existence and cocycle property]\label{lem:3.1}
+Under (H2), for each $(s, x) \in \mathbb{R}^2$ there exists a unique global absolutely continuous solution $t \mapsto x(t; s, x)$ to \eqref{eq:edo} (in the sense of Carathéodory, $x(t) = x + \int_s^t f(\theta, x(\theta))\,d\theta$) defined on all of $\mathbb{R}$. Defining $\varphi_{s,t}(x) = x(t; s, x)$, the cocycle identities hold:
+\[
+\varphi_{s,s} = \mathrm{id}_{\mathbb{R}}, \qquad \varphi_{t,u} \circ \varphi_{s,t} = \varphi_{s,u} \qquad (\forall\, s, t, u \in \mathbb{R}).
+\]
+\end{lema}
+\begin{proof}
+By the Carathéodory existence and uniqueness theorem \cite[Chap.~2]{CoddingtonLevinson1955} (see also \cite{Hartman2002, HirschSmaleDevaney2013, Sotomayor1979}), the local Lipschitz property in $x$ with integrable modulus $\beta \in L^1_{\text{loc}}$ guarantees local existence and uniqueness. From the bound $|x(t)| \le |x| + \left|\int_s^t \alpha(\theta)(1 + |x(\theta)|)\,d\theta\right|$ and Grönwall's integral inequality, $|x(t)|$ is bounded on compact intervals, preventing finite-time blow-up. The cocycle property follows from solution uniqueness through $(t, \varphi_{s,t}(x))$.
+\end{proof}
+
+\begin{teorema}[Diffeomorphic spatial flow]\label{teo:3.2}
+Under (H2), for each fixed pair $(s, t) \in \mathbb{R}^2$, the spatial map $\varphi_{s,t} : \mathbb{R} \to \mathbb{R}$ is a $C^1$-diffeomorphism of $\mathbb{R}$ onto $\mathbb{R}$, with inverse $\varphi_{s,t}^{-1} = \varphi_{t,s}$ and spatial derivative
+\[
+\partial_x \varphi_{s,t}(x) = \exp\left(\int_s^t \partial_x f(\theta, x(\theta; s, x))\,d\theta\right) > 0.
+\]
+If, in addition, $x \mapsto f(\theta, x)$ is of class $C^2(\mathbb{R})$ with $|\partial_{xx}^2 f(\theta, x)| \le \gamma(\theta) \in L^1_{\text{loc}}(\mathbb{R})$, then $\varphi_{s,t} \in C^2(\mathbb{R})$ and its second spatial derivative is given by
+\[
+\partial_{xx}^2 \varphi_{s,t}(x) = \partial_x \varphi_{s,t}(x) \int_s^t \partial_{xx}^2 f(\theta, x(\theta; s, x))\,\big(\partial_x \varphi_{s,\theta}(x)\big)\,d\theta.
+\]
+\end{teorema}
+\begin{proof}
+By the theorem on differentiability with respect to initial conditions for Carathéodory equations \cite[Chap.~2, Thm.~4.1]{CoddingtonLevinson1955} and \cite[Chap.~V]{Hartman2002}, the map $x \mapsto \varphi_{s,t}(x)$ is of class $C^1$ and $y(t) = \partial_x \varphi_{s,t}(x)$ is the unique absolutely continuous solution of the first-order variational equation $y(t) = 1 + \int_s^t \partial_x f(\theta, x(\theta; s, x))y(\theta)\,d\theta$, given by the exponential formula above, which is strictly positive. Differentiating once more with respect to $x$ under the integral sign (second-order variational equation) yields the expression for $\partial_{xx}^2 \varphi_{s,t}(x)$, which vanishes identically whenever $\partial_{xx}^2 f \equiv 0$. By Lemma~\ref{lem:3.1}, $\varphi_{t,s} \circ \varphi_{s,t} = \mathrm{id}_{\mathbb{R}} = \varphi_{s,t} \circ \varphi_{t,s}$, hence $\varphi_{s,t}$ is a bijection with inverse $\varphi_{t,s} \in C^1(\mathbb{R})$.
+\end{proof}
+
+\begin{lema}[Reparameterisation by civil time]\label{lem:3.3}
+Let $\Theta : \mathbb{R} \to \mathbb{R}$ be a strictly increasing $C^1$-diffeomorphism. If $x(\theta)$ solves \eqref{eq:edo}, then $z(t) = (x \circ \Theta)(t)$ solves $z'(t) = \Theta'(t) f(\Theta(t), z(t))$ almost everywhere. The flow in civil time is
+\[
+\Phi_{s \to t} := \varphi_{\Theta(s), \Theta(t)},
+\]
+which inherits from Theorem~\ref{teo:3.2} the spatial $C^1$-diffeomorphism structure, the cocycle property $\Phi_{t \to u} \circ \Phi_{s \to t} = \Phi_{s \to u}$, and invertibility $\Phi_{s \to t}^{-1} = \Phi_{t \to s}$.
+\end{lema}
+\begin{proof}
+Change of variables for absolutely continuous functions; the algebraic identities of $\Phi_{s \to t}$ follow from composing $\varphi$ with bijection $\Theta$.
+\end{proof}
+
+\begin{corolario}[Linear accrual regime]\label{cor:3.4}
+If $f(\theta, x) = r(\theta)x$ with $r \in L^1_{\text{loc}}(\mathbb{R})$, then $\partial_{xx}^2 f(\theta, x) \equiv 0$ and $\varphi_{\theta_1, \theta_2}(x) = F_\theta(\theta_1, \theta_2)x$, where
+\[
+F_\theta(\theta_1, \theta_2) = \exp\left(\int_{\theta_1}^{\theta_2} r(\theta)\,d\theta\right) > 0, \qquad F_\theta(\theta_1, \theta_3) = F_\theta(\theta_1, \theta_2) F_\theta(\theta_2, \theta_3), \qquad F_\theta(\theta_1, \theta_2) = \frac{F_\theta(0, \theta_2)}{F_\theta(0, \theta_1)}.
+\]
+In civil time, $\Phi_{s \to t}(x) = F(s,t)x$ with $F(s,t) := F_\theta(\Theta(s), \Theta(t)) = F(t_0, t)/F(t_0, s)$. For each pair $(s,t)$, the map $x \mapsto F(s,t)x$ is a linear ($C^\infty$) diffeomorphism of $\mathbb{R}$ with $\partial_x \Phi_{s \to t}(x) \equiv F(s,t)$ and $\partial_x^m \Phi_{s \to t}(x) \equiv 0$ for all $m \ge 2$.
+\end{corolario}
+\begin{proof}
+Direct integration of the linear separable Carathéodory ODE under (H2), application of the second-order formula of Theorem~\ref{teo:3.2} with $\partial_{xx}^2 f \equiv 0$, and Lebesgue integral additivity.
+\end{proof}
+
+\begin{proposicao}[Compatibility with basis $B$ and accrual plateaus]\label{prop:3.5}
+Let $i_k > -1$ be the annual effective benchmark rate for accrual day $d_k$. Defining in $\theta$-space the piecewise constant rate $r(\theta) = \ln(1 + i_k)$ for $\theta \in \left(\frac{k-1}{B}, \frac{k}{B}\right]$ (or, under regularisation $\Theta_\eta$, $r(\theta) = 0$ on non-business images $(\Theta_\eta(d_{k-1}), \Theta_\eta(d_k - 1)]$ and $r(\theta) = \frac{\ln(1+i_k)/B}{\Theta_\eta(d_k) - \Theta_\eta(d_k - 1)}$ on $(\Theta_\eta(d_k - 1), \Theta_\eta(d_k)]$), one has for $j \le k$:
+\[
+F_\theta\left(\frac{j}{B}, \frac{k}{B}\right) = \prod_{m = j+1}^{k} (1 + i_m)^{1/B}, \qquad F(s,t) = \prod_{m = N(t_0, s) + 1}^{N(t_0, t)} (1 + i_m)^{1/B},
+\]
+with $F(s,t) = 1$ ($\Phi_{s \to t} = \mathrm{id}_{\mathbb{R}}$) whenever $N(t_0, s) = N(t_0, t)$.
+\end{proposicao}
+\begin{proof}
+The integral of $r(\theta)$ across step $m$ evaluates to $\frac{1}{B}\ln(1 + i_m)$, while vanishing on non-business intervals. Summing over $m = j+1, \dots, k$ and exponentiating gives the product.
+\end{proof}
+
+\section{Reprocessing and Spatial Taylor Expansion with Zero Remainder}\label{sec:4}
+
+For $a \in \mathbb{R}$, let $T_a(x) = x + a$ denote the affine translation diffeomorphism, with $T_a^{-1} = T_{-a}$, $T_a'(x) \equiv 1$, $T_a''(x) \equiv 0$, and $T_a \circ T_b = T_{a+b} = T_b \circ T_a$. We fix $\Theta$ and $\Phi_{s \to t}$ under (H1)--(H2).
+
+\begin{definicao}[Snapshot]\label{def:4.1}
+Given evaluation date $\tau \in \mathbb{Z}$ ($\tau \ge t_0$) and recording horizon $\sigma \in \mathbb{Z}$, let $e_1, \dots, e_m$ be the events of $E_\sigma$ with $t_v(e) \le \tau$, ordered by value date $t_0 < v_1 \le \dots \le v_m \le \tau$, with monetary values $a_1, \dots, a_m$. The snapshot (exact balance state) at $\tau$ under version $\sigma$ is
+\[
+S_\sigma(\tau) = \Phi_{v_m \to \tau} \circ T_{a_m} \circ \Phi_{v_{m-1} \to v_m} \circ \dots \circ T_{a_1} \circ \Phi_{t_0 \to v_1}(x_0),
+\]
+and $S_\sigma(\tau) = \Phi_{t_0 \to \tau}(x_0)$ when $m = 0$. Reprocessing at $\sigma' > \sigma$ is the evaluation of $S_{\sigma'}(\tau)$.
+\end{definicao}
+
+\begin{lema}[Invariance under transaction recording order]\label{lem:4.2}
+$S_\sigma(\tau)$ depends on $E_\sigma$ solely through the multiset projection $\{(t_v(e), a(e)) : e \in E_\sigma,\, t_v(e) \le \tau\}$; in particular, it is independent of recording timestamps $t_c(e)$ and ingestion sequence, and events sharing identical value dates can be permuted or summed arbitrarily.
+\end{lema}
+\begin{proof}
+Definition~\ref{def:4.1} sorts solely by $t_v$. If $v_j = v_{j+1}$, then $\Phi_{v_j \to v_{j+1}} = \mathrm{id}_{\mathbb{R}}$ and $T_{a_{j+1}} \circ T_{a_j} = T_{a_{j+1} + a_j} = T_{a_j} \circ T_{a_{j+1}}$.
+\end{proof}
+
+\begin{teorema}[Reprocessing from control point]\label{teo:4.3}
+Let $\sigma \le \sigma'$ and $N_\tau = \{e \in E_{\sigma'} \setminus E_\sigma : t_v(e) \le \tau\}$. If $N_\tau = \emptyset$, then $S_{\sigma'}(\tau) = S_\sigma(\tau)$. Otherwise, let $v_* = \min_{e \in N_\tau} t_v(e)$ and define
+\[
+x_* = \Phi_{v_* - 1 \to v_*}(S_\sigma(v_* - 1))
+\]
+as the pre-event state at $v_*$ evaluated using only events in $E_\sigma$ with $t_v(e) < v_*$. Then $x_*$ is identical in both versions $\sigma$ and $\sigma'$, and
+\[
+S_{\sigma'}(\tau) = \Gamma_{\sigma'}(x_*), \qquad S_\sigma(\tau) = \Gamma_\sigma(x_*),
+\]
+where $\Gamma_{\sigma'}$ (resp.\ $\Gamma_\sigma$) denotes the composition of flow transitions and event translations over $[v_*, \tau]$ in $E_{\sigma'}$ (resp.\ $E_\sigma$). Both $\Gamma_\sigma$ and $\Gamma_{\sigma'}$ are global $C^1$-diffeomorphisms of $\mathbb{R}$ onto $\mathbb{R}$.
+\end{teorema}
+\begin{proof}
+Every $e \in N_\tau$ satisfies $t_v(e) \ge v_*$; hence $\{e \in E_\sigma : t_v(e) < v_*\} = \{e \in E_{\sigma'} : t_v(e) < v_*\}$ and pre-event state $x_*$ at $v_*$ is identical across both versions. Factorisation follows from the cocycle property (Lemma~\ref{lem:3.3}). Because each $\Phi_{a \to b}$ and each $T_a$ is a $C^1$-diffeomorphism of $\mathbb{R}$, their finite compositions $\Gamma_\sigma$ and $\Gamma_{\sigma'}$ are likewise $C^1$-diffeomorphisms.
+\end{proof}
+
+\begin{observacao}[Computational complexity]\label{obs:4.4}
+Reprocessing complexity scales strictly with the number of days and events within active window $[v_*, \tau]$, retrieving history prior to $v_*$ directly from persisted immutable control points in $O(1)$ disk reads.
+\end{observacao}
+
+\begin{teorema}[First-order spatial Taylor expansion with identically zero remainder (\texorpdfstring{$R_2 \equiv 0$}{R2 = 0})]\label{teo:4.5}
+Consider the joint evolution map $\Psi_\tau : \mathbb{R} \times \mathbb{R}^m \to \mathbb{R}$, $(x_*, \mathbf{a}) \mapsto \Psi_\tau(x_*, \mathbf{a})$, mapping control point state $x_*$ (at $v_*$) and net cash flow vector $\mathbf{a} = (a_1, \dots, a_m) \in \mathbb{R}^m$ at dates $v_* \le v_1 < \dots < v_m \le \tau$ to terminal state at $\tau$:
+\[
+\Psi_\tau(x_*, \mathbf{a}) = \Phi_{v_m \to \tau} \circ T_{a_m} \circ \Phi_{v_{m-1} \to v_m} \circ \dots \circ T_{a_1} \circ \Phi_{v_* \to v_1}(x_*).
+\]
+Under Hypothesis (H2) with spatially $C^2$ vector field:
+\begin{enumerate}[label=(\roman*)]
+    \item \textbf{First-order Taylor formula with second-order integral remainder:} For any finite perturbation $(\delta x_*, \delta\mathbf{a}) \in \mathbb{R} \times \mathbb{R}^m$ about reference state $(x_*, \mathbf{a}^\sigma)$,
+    \[
+    \Psi_\tau(x_* + \delta x_*, \mathbf{a}^\sigma + \delta\mathbf{a}) = \Psi_\tau(x_*, \mathbf{a}^\sigma) + \frac{\partial \Psi_\tau}{\partial x_*}(x_*, \mathbf{a}^\sigma)\,\delta x_* + \sum_{j=1}^{m} \frac{\partial \Psi_\tau}{\partial a_j}(x_*, \mathbf{a}^\sigma)\,\delta a_j + R_2(\delta x_*, \delta\mathbf{a}),
+    \]
+    where the second-order Taylor remainder in Laplace--Taylor integral form is
+    \[
+    R_2(\delta x_*, \delta\mathbf{a}) = \int_0^1 (1 - \lambda)\, D^2 \Psi_\tau\big(x_* + \lambda\delta x_*,\, \mathbf{a}^\sigma + \lambda\delta\mathbf{a}\big)\big[(\delta x_*, \delta\mathbf{a}), (\delta x_*, \delta\mathbf{a})\big]\,d\lambda.
+    \]
+    \item \textbf{Exact remainder annihilation under linear accrual (\texorpdfstring{$R_2 \equiv 0$}{R2 = 0}):} If the accrual field is linear, $f(\theta, x) = r(\theta)x$ (Corollary~\ref{cor:3.4}, gross-of-tax balances), first-order partial derivatives (Fréchet sensitivities) are constant and equal to compounding factors:
+    \[
+    \frac{\partial \Psi_\tau}{\partial x_*} \equiv F(v_*, \tau), \qquad \frac{\partial \Psi_\tau}{\partial a_j} \equiv F(v_j, \tau) \quad (j = 1, \dots, m),
+    \]
+    the spatial Hessian matrix vanishes identically on all of $\mathbb{R} \times \mathbb{R}^m$, $D^2 \Psi_\tau \equiv 0$, and consequently \textbf{the second-order Taylor remainder is identically zero for finite perturbations of arbitrary magnitude}:
+    \[
+    R_2(\delta x_*, \delta\mathbf{a}) \equiv 0 \qquad (\forall\, \delta x_* \in \mathbb{R},\; \forall\, \delta\mathbf{a} \in \mathbb{R}^m).
+    \]
+\end{enumerate}
+\end{teorema}
+\begin{proof}
+(i) Because each $\Phi_{v_{j-1} \to v_j}$ is $C^2$ (Theorem~\ref{teo:3.2}) and each $T_{a_j}(x) = x + a_j$ is $C^\infty$ in $(x, a_j)$, composition $\Psi_\tau$ is of class $C^2(\mathbb{R} \times \mathbb{R}^m)$, validating the multivariate Taylor formula with integral remainder \cite[vol.~2]{LimaAnalise2}.
+(ii) By the chain rule applied to $\Psi_\tau$, the partial derivative with respect to $a_j$ at $(x_*, \mathbf{a})$ is the product of spatial derivatives of subsequent maps:
+\[
+\frac{\partial \Psi_\tau}{\partial a_j} = \left(\prod_{\ell = j+1}^{m} \Phi'_{v_{\ell-1} \to v_\ell}(x_\ell^-)\right) \Phi'_{v_m \to \tau}(x_\tau^-) \cdot \frac{\partial}{\partial a_j}(x_j^- + a_j).
+\]
+In the linear regime $\Phi_{s \to t}(x) = F(s,t)x$, we have $\Phi'_{s \to t}(x) \equiv F(s,t)$ constant (independent of $x$) and $\frac{\partial}{\partial a_j}(x_j^- + a_j) = 1$. By the cocycle property $F(v_j, v_{j+1})\cdots F(v_m, \tau) = F(v_j, \tau)$, this yields $\frac{\partial \Psi_\tau}{\partial a_j} \equiv F(v_j, \tau)$ and, analogously, $\frac{\partial \Psi_\tau}{\partial x_*} \equiv F(v_*, \tau)$. Since all first-order partial derivatives are constant with respect to $(x_*, \mathbf{a})$, all second-order partial derivatives vanish identically ($\frac{\partial^2 \Psi_\tau}{\partial x_*^2} = \frac{\partial^2 \Psi_\tau}{\partial x_* \partial a_j} = \frac{\partial^2 \Psi_\tau}{\partial a_i \partial a_j} \equiv 0$), meaning $D^2 \Psi_\tau \equiv 0$ and $R_2(\delta x_*, \delta\mathbf{a}) \equiv 0$.
+\end{proof}
+
+\begin{observacao}[Analytic distinction: spatial Taylor (\texorpdfstring{$R_2^{\text{sp}} \equiv 0$}{R2_sp = 0}) vs.\ temporal Taylor (\texorpdfstring{$R_2^{\text{temp}} > 0$}{R2_temp > 0})]\label{obs:4.6}
+It is essential to distinguish the two directions of Taylor expansion:
+\begin{enumerate}[label=(\alph*)]
+    \item \textbf{Spatial expansion in state and event variables $(x_*, \mathbf{a})$ (Theorem~\ref{teo:4.5}):} For fixed dates, composite operator $\Psi_\tau(x_*, \mathbf{a})$ is an affine polynomial of degree $1$ in $(x_*, \mathbf{a})$. Hence, first-order Taylor expansion about prior ledger version $\sigma$ has \textbf{identically zero remainder} ($R_2^{\text{sp}} \equiv 0$). This spatial remainder vanishing justifies computing retroactive adjustments via exact differentials $\Delta V(\tau) = \sum_{e \in N_\tau} \frac{\partial \Psi_\tau}{\partial a(e)} a(e)$ without re-evaluating unaffected historical events.
+    \item \textbf{Temporal expansion in step size $\Delta\theta = 1/B$ (or in rate $i_k$):} In compound interest, temporal factor $F_\theta(\theta, \theta + \Delta\theta) = \exp(r\Delta\theta) = (1 + i_k)^{1/B}$ is strictly convex in $r\Delta\theta > 0$:
+    \[
+    \exp(r\Delta\theta) = 1 + r\Delta\theta + R_2^{\text{temp}}(\Delta\theta), \qquad R_2^{\text{temp}}(\Delta\theta) = \frac{1}{2}r^2 \exp(r\xi)(\Delta\theta)^2 > 0 \quad (\xi \in (0, \Delta\theta)).
+    \]
+    Truncating the \emph{temporal} Taylor series at first order ($1 + r\Delta\theta$) would replace compound interest with simple interest, incurring a truncation error of $R_2^{\text{temp}} \approx \frac{1}{2}(0.1012 / 252)^2 \approx 8.06 \times 10^{-8}$ per business day (for rate $10.65\%$ p.a.), corrupting the 8th decimal place of official exchange factors. Accordingly, the BiChronos Engine evaluates temporal factors $f_k = \lfloor 10^p(1+i_k)^{1/B}\rfloor/10^p$ exactly without temporal linearisation, while exploiting exact linearity ($R_2^{\text{sp}} \equiv 0$) strictly within state and event space $(x_*, \mathbf{a})$. (Only under the simple interest regime of Remark~\ref{obs:2.8}(b) are spatial and temporal remainders simultaneously zero.)
+\end{enumerate}
+\end{observacao}
+
+\begin{corolario}[Exact superposition and control point error propagation as cases of \texorpdfstring{$R_2 \equiv 0$}{R2 = 0}]\label{cor:4.7}
+Under the hypotheses of Theorem~\ref{teo:4.5}(ii):
+\begin{enumerate}[label=(\alph*)]
+    \item \textbf{Superposition of retroactive events ($\delta x_* = 0$, $\delta a_j = a(e_j)$):} Taking exact state at the control point ($\delta x_* = 0$), the variation between versions $\sigma$ and $\sigma'$ is given by the first-order Taylor polynomial with zero remainder:
+    \[
+    S_{\sigma'}(\tau) - S_\sigma(\tau) = \sum_{e \in N_\tau} \frac{\partial \Psi_\tau}{\partial a(e)}\,a(e) = \sum_{e \in N_\tau} a(e) F(t_v(e), \tau).
+    \]
+    In particular, for a value-date rectification from $w$ to $v$ via reversal $(\cdot, w, -a)$ and new entry $(\cdot, v, a)$, the adjustment at $\tau \ge \max(v, w)$ is $\Delta(\tau) = a\,[F(v, \tau) - F(w, \tau)]$.
+    \item \textbf{Control point error propagation ($\delta x_* = S_{k_*} - V_{k_*}$, $\delta\mathbf{a} = \mathbf{0}$):} If a system restarts reprocessing at step $k_*$ using rounded balance $S_{k_*}$ instead of exact ideal balance $V_{k_*}$ with identical subsequent events ($\delta\mathbf{a} = \mathbf{0}$), terminal ideal balance deviation at step $n$ is governed exactly by the first-order Taylor term in $x_*$ with zero remainder:
+    \[
+    V'_n - V_n = \frac{\partial \Psi_n}{\partial x_*}\,(S_{k_*} - V_{k_*}) = F(d_{k_*}, d_n)\,(S_{k_*} - V_{k_*}).
+    \]
+\end{enumerate}
+\end{corolario}
+\begin{proof}
+Direct substitution into Theorem~\ref{teo:4.5}(i)--(ii) with $R_2(\delta x_*, \delta\mathbf{a}) = 0$, specialising (a) to $\delta x_* = 0$ and (b) to $\delta\mathbf{a} = \mathbf{0}$.
+\end{proof}
+
+\begin{proposicao}[Reversibility: past state retrieval]\label{prop:4.8}
+Let $s < \tau$ and let $e_1, \dots, e_m$ be events of $E_\sigma$ with $s < t_v(e) \le \tau$, ordered by $v_1 \le \dots \le v_m$. Provided no full redemption extinguished the balance in $(s, \tau]$, the state at $s$ is recoverable from state at $\tau$ via:
+\[
+S_\sigma(s) = \Phi_{v_1 \to s} \circ T_{-a_1} \circ \Phi_{v_2 \to v_1} \circ T_{-a_2} \circ \dots \circ T_{-a_m} \circ \Phi_{\tau \to v_m}(S_\sigma(\tau)).
+\]
+\end{proposicao}
+\begin{proof}
+Inversion of composite chain $S_\sigma(\tau) = \Phi_{v_m \to \tau} \circ T_{a_m} \circ \dots \circ T_{a_1} \circ \Phi_{s \to v_1}(S_\sigma(s))$ using $\Phi_{a \to b}^{-1} = \Phi_{b \to a}$ and $T_a^{-1} = T_{-a}$.
+\end{proof}
+
+\begin{proposicao}[Determinism and compositionality]\label{prop:4.9}
+$S_{\sigma''}(\tau)$ is a pure function of $E_{\sigma''}$ and $\tau$. Reprocessing $\sigma \to \sigma' \to \sigma''$ via control points yields identical output to direct evaluation $\sigma \to \sigma''$ or from $t_0$, and reprocessing twice over an unchanged base is idempotent.
+\end{proposicao}
+\begin{proof}
+Follows from Definition~\ref{def:4.1}, Lemma~\ref{lem:4.2}, and Theorem~\ref{teo:4.3}.
+\end{proof}
+
+\section{Truncation, Rounding, \texorpdfstring{$(P, J)$}{(P, J)} Decomposition, and Algorithm}\label{sec:5}
+
+There exist two distinct sources of numerical error: (a) truncation of accrual compounding factors (\S\ref{sec:5.1}) and (b) integer rounding of published balances at each daily step (\S\ref{sec:5.2}). The latter induces penny divergence between daily stepped snapshots and closed-period cumulative evaluation; subsections \S\ref{sec:5.2} through \S\ref{sec:5.6} quantify this divergence and eliminate it by construction in Algorithm~\ref{alg:5.14}.
+
+\subsection{Truncated Factor Error}\label{sec:5.1}
+
+\begin{proposicao}[Compounding factor truncation error]\label{prop:5.1}
+Let $f_1, \dots, f_n \in [1, M]$ and $\tilde{f}_i = \lfloor 10^p f_i \rfloor / 10^p$. Then $1 \le \tilde{f}_i \le f_i$ and
+\[
+0 \le \prod_{i=1}^{n} f_i - \prod_{i=1}^{n} \tilde{f}_i \le n \, 10^{-p} M^{n-1}.
+\]
+\end{proposicao}
+\begin{proof}
+Because $1$ is an integer multiple of $10^{-p}$ and $f_i \ge 1$, we have $\tilde{f}_i \ge 1$ and $0 \le f_i - \tilde{f}_i < 10^{-p}$. From the telescoping identity
+\[
+\prod_{i=1}^{n} f_i - \prod_{i=1}^{n} \tilde{f}_i = \sum_{i=1}^{n} \left(\prod_{j < i} \tilde{f}_j\right) (f_i - \tilde{f}_i) \left(\prod_{j > i} f_j\right),
+\]
+each outer product is bounded in $[1, M^{i-1}]$ and $[1, M^{n-i}]$, bounding each of the $n$ terms by $10^{-p} M^{n-1}$.
+\end{proof}
+
+\begin{observacao}[Daily accrual regime vs.\ 16-decimal B3 cumulative factors]\label{obs:5.2}
+In the daily step-by-step accrual regime, only the daily published factor $f_k$ ($p=8$ under DI conventions) is truncated at source, and the cumulative factor $F(s,t) = \prod_{k=s+1}^t f_k$ satisfies the exact cocycle property $F(s,u) = F(s,t)F(t,u)$ (Invariant~I8). Should a bond prospectus require additional 16-decimal truncation of cumulative products between cash flow dates ($\tilde{F}_{16}(s,t) = \lfloor 10^{16}\prod f_k\rfloor/10^{16}$, standard in B3 bond settlements), the control point $v_*$ must anchor at the latest preceding cash flow event ($v_r < v_*$). In the sequel, we model the exact daily accrual regime over rational factors $f_k$ with denominator $10^p$.
+\end{observacao}
+
+\subsection{Rounding, \texorpdfstring{$(P_k, J_k)$}{(Pk, Jk)} Decomposition, and Redemption Modalities}\label{sec:5.2}
+
+Published accounting balances are integers in monetary cents \cite{Higham2002}.
+
+\begin{definicao}[Rounding operator]\label{def:5.3}
+A rounding operator is a non-decreasing function $\rho : \mathbb{R} \to \mathbb{Z}$ satisfying $\rho(x + m) = \rho(x) + m$ for all $m \in \mathbb{Z}$, $\rho(0) = 0$, and $|\rho(x) - x| \le \delta$ ($\delta \in [1/2, 1]$). Canonical cases for $x \ge 0$:
+\begin{itemize}
+    \item \textbf{Truncation (floor):} $\rho(x) = \lfloor x \rfloor$, $\delta = 1$, $\rho(x) - x \in (-1, 0]$;
+    \item \textbf{Half-up rounding:} $\rho(x) = \lfloor x + \frac{1}{2} \rfloor$, $\delta = \frac{1}{2}$, $\rho(x) - x \in (-\frac{1}{2}, \frac{1}{2}]$.
+\end{itemize}
+\end{definicao}
+
+\noindent\textbf{Hypothesis (H3 — Ledger Evolution, Withdrawals, and \texorpdfstring{$(P_k, J_k)$}{(Pk, Jk)} Decomposition):} Over horizon $k = 1, \dots, n$, daily factors satisfy $f_k \in [1, M]$ (non-negative rates), initial balance is $x_0 \in \mathbb{Z}_{\ge 0}$ (with $P_0 = x_0$ and $J_0 = 0$), and net cash flows $a_k \in \mathbb{Z}$ maintain non-negative balances ($V_k \ge 0$). To ensure financial and ledger cohesion (COSIF), we formalize the cash flow type and the update of pair $(P_k, J_k)$ with $V_k = P_k + J_k$:
+\begin{enumerate}[label=(\roman*)]
+    \item \textbf{Prior to cash flow on day $k$:} Overnight compounding elevates the ideal balance to $V_k^- = f_k V_{k-1}$, preserving principal $P_k^- = P_{k-1}$ and expanding accrued interest to $J_k^- = J_{k-1} + (f_k - 1)V_{k-1} = V_k^- - P_{k-1}$. The published balance available prior to cash flow is $S_k^{\text{pre}} = \rho(V_k^-)$.
+    \item \textbf{Deposit ($a_k \ge 0$):} Adds fully to principal: $P_k = P_{k-1} + a_k$, $J_k = J_k^-$, and $V_k = f_k V_{k-1} + a_k$.
+    \item \textbf{Partial withdrawal ($-S_k^{\text{pre}} < a_k < 0$):} Under half-up rounding, we require $-a_k \le \lfloor V_k^- \rfloor$ so that $V_k \ge 0$. Contract rules dictate one of two modalities:
+    \begin{itemize}
+        \item \emph{Modality A (Interest-bearing account / integer translation):} $V_k = f_k V_{k-1} + a_k$, deducted first from accrued interest or principal according to chart-of-accounts rules (e.g., $J_k = \max(0, J_k^- + a_k)$ and $P_k = V_k - J_k$, or proportional drawdown $\alpha_k = |a_k|/V_k^-$ across $P_k$ and $J_k$). This is the baseline modality for Invariants I1 through I20.
+        \item \emph{Modality B (Proportional unit/share liquidation --- pro-rata):} When redemption liquidates an exact fraction $\alpha_k \in (0, 1)$ of holdings, principal and interest (including sub-cent residuals) undergo proportional retirement: $P_k = (1 - \alpha_k)P_{k-1}$, $J_k = (1 - \alpha_k)J_k^-$, and $V_k = (1 - \alpha_k)f_k V_{k-1}$, with gross cash liquidated $L_k = \rho(\alpha_k f_k V_{k-1})$. (Modality B preserves linear homogeneity with respect to state $V_{k-1}$ with Taylor remainder $R_2 \equiv 0$, scaling the effective factor by $(1-\alpha_k)f_k$.)
+    \end{itemize}
+    \item \textbf{Full redemption / Account liquidation ($a_k = -S_k^{\text{pre}}$ or $\alpha_k = 1$):} Fully extinguishes the position and its sub-cent fraction: $P_k := 0$, $J_k := 0$, $V_k := 0$, $\tilde{V}_k := 0$, and $g_k := 0$, preventing positive ``ghost fractions'' (under truncation) or negative internal residues (under half-up).
+\end{enumerate}
+
+\begin{definicao}[Legacy iterative stepping and ideal balance]\label{def:5.4}
+Under Modality A, \emph{legacy iterative stepping} (rounding every single day) is $y_0 = x_0$, $y_k = \rho(f_k y_{k-1}) + a_k$. The \emph{ideal balance} (unrounded daily evolution) is $V_0 = x_0$, $V_k = f_k V_{k-1} + a_k$.
+\end{definicao}
+
+\begin{proposicao}[Iterative stepping error]\label{prop:5.5}
+Let $e_k = y_k - V_k$ and $u_k = \rho(f_k y_{k-1}) - f_k y_{k-1}$. Then
+\[
+e_n = \sum_{k=1}^{n} \left(\prod_{j=k+1}^{n} f_j\right) u_k, \qquad |e_n| \le \delta n M^{n-1}.
+\]
+If $\rho = \lfloor \cdot \rfloor$, then $-n M^{n-1} < e_n \le 0$: legacy iterative stepping is systematically downward-biased.
+\end{proposicao}
+\begin{proof}
+$e_k = \rho(f_k y_{k-1}) + a_k - (f_k V_{k-1} + a_k) = u_k + f_k e_{k-1}$ with $e_0 = 0$. Unrolling the recurrence (or applying Theorem~\ref{teo:4.5} to daily perturbations $u_k$ with zero remainder $R_2 \equiv 0$) and applying $|u_k| \le \delta$ and $\prod_{j>k} f_j \le M^{n-1}$ yields the bound. Under floor truncation, $u_k \in (-1, 0]$ enforces $e_n \le 0$.
+\end{proof}
+
+\begin{proposicao}[Sub-cent stagnation trap]\label{prop:5.6}
+There exist parameters under (H3) for which iterative stepping never accrues yield ($y_k = x_0$, $\forall k$), while ideal balance $V_k$ grows exponentially. Example: $x_0 = 1000$ ($\text{R\$}\,10.00$), $f_k = 1.0003$, $a_k = 0$, under truncation or half-up rounding.
+\end{proposicao}
+\begin{proof}
+$f_1 y_0 = 1000.3 \implies \rho(1000.3) = 1000 \implies y_k = 1000$ for all $k$. In contrast, $V_4 = 1000 \times 1.0003^4 = 1001.20054\dots \implies \rho(V_4) = 1001$.
+\end{proof}
+
+\subsection{Cumulative Snapshot and Aggregate Accrual Reconciliation}\label{sec:5.3}
+
+\begin{definicao}[Cumulative snapshot and individual movement]\label{def:5.7}
+Given $x_0, (f_k), (a_k)$ under (H3), internal state is $V_k = P_k + J_k$. The published individual snapshot is $S_k = \rho(V_k) \in \mathbb{Z}$, published principal is $P_k \in \mathbb{Z}$, published accrued interest is $J_{k,\text{pub}} = S_k - P_k \in \mathbb{Z}$, and daily published movement is $D_k = S_k - S_{k-1} - a_k \in \mathbb{Z}$.
+\end{definicao}
+
+\begin{teorema}[Closing consistency]\label{teo:5.8}
+Under (H3):
+\begin{enumerate}[label=(\roman*)]
+    \item $|S_k - V_k| \le \delta$ for all $k \ge 0$, uniformly bounded independent of $k$.
+    \item Path independence: $S_k$ depends solely on $(x_0, f_1, \dots, f_k, a_1, \dots, a_k)$.
+    \item Exact individual accounting closure: $\sum_{k=1}^{n} D_k = S_n - x_0 - \sum_{k=1}^{n} a_k$, and $S_n = P_n + J_{n,\text{pub}}$ with $J_{n,\text{pub}} = \sum_{k=1}^n D_k$.
+    \item $|S_n - y_n| \le \delta(1 + n M^{n-1})$. If $\rho = \lfloor \cdot \rfloor$, then $y_n \le S_n \le V_n$ and $0 \le S_n - y_n \le \lfloor n M^{n-1} \rfloor$.
+\end{enumerate}
+\end{teorema}
+\begin{proof}
+(i) Definition~\ref{def:5.3}. (ii) $V_k$ is a deterministic function of inputs up to $k$. (iii) Telescoping $D_k = S_k - S_{k-1} - a_k$ with $S_0 = x_0 = P_0$ and $P_n = x_0 + \sum_{k=1}^n a_k$. (iv) Triangle inequality $|S_n - y_n| \le |S_n - V_n| + |V_n - y_n| \le \delta + \delta n M^{n-1}$ and monotonicity of $\lfloor \cdot \rfloor$.
+\end{proof}
+
+\begin{observacao}[Double-entry aggregate accrual reconciliation in General Ledger --- COSIF]\label{obs:5.9}
+In a banking portfolio with $M_{\text{cli}}$ individual customer accounts $i \in \{1, \dots, M_{\text{cli}}\}$, published balance $S_k^{(i)} = \rho(V_k^{(i)})$ governs customer statements and legal withdrawal rights, but the sum of rounded balances $\sum_{i=1}^{M_{\text{cli}}} S_k^{(i)}$ diverges from the bank's total economic accrual liability $\rho\big(\sum_{i=1}^{M_{\text{cli}}} V_k^{(i)}\big)$ by up to $M_{\text{cli}}\delta$ cents (e.g., if $100,000$ accounts accrue $0.4$ cent of interest on day 1 under truncation, $D_1^{(i)} = 0$ for each customer, but aggregate interest expense incurred by the bank is $\text{R\$}\,400.00$). To enforce exact double-entry balancing between customer sub-ledgers and the General Ledger (GL / COSIF) under accrual accounting (N1/N2), the BiChronos Engine computes on daily balance sheet closing the \textbf{Sub-Cent Accrual Provision}:
+\[
+R_k^{\text{GL}} = \rho\left(\sum_{i=1}^{M_{\text{cli}}} V_k^{(i)}\right) - \sum_{i=1}^{M_{\text{cli}}} S_k^{(i)} \in \mathbb{Z}.
+\]
+Thus, total booked liabilities ($\sum_i S_k^{(i)} + R_k^{\text{GL}}$) match aggregate effective rate accrual $\rho(\sum_i V_k^{(i)})$ down to the exact cent, while each individual account statement closes exactly with $S_k^{(i)}$.
+\end{observacao}
+
+\begin{proposicao}[Non-negative daily movement]\label{prop:5.10}
+Under (H3, Modality A), $D_k = \rho(f_k V_{k-1}) - \rho(V_{k-1}) \ge 0$ for all $k \ge 1$, invariant to integer cash flows $a_k$.
+\end{proposicao}
+\begin{proof}
+Because $a_k \in \mathbb{Z}$, $\rho(f_k V_{k-1} + a_k) = \rho(f_k V_{k-1}) + a_k$, cancelling $a_k$ in $D_k$. Because $f_k \ge 1$ and $V_{k-1} \ge 0$, $f_k V_{k-1} \ge V_{k-1}$ and $\rho$ is non-decreasing.
+\end{proof}
+
+\begin{proposicao}[Control point in $V$ vs.\ in $S$]\label{prop:5.11}
+Let $0 < k_* < n$ and $n' = n - k_*$. (a) Reprocessing from ideal state $V_{k_*}$ reproduces $V_k$ and $S_k$ exactly for all $k > k_*$. (b) Reprocessing from rounded balance $S_{k_*}$ incurs an error of up to $\delta(1 + M^{n'} + n' M^{n'-1})$ (with subsequent daily rounding) or up to $\lfloor 2\delta + \delta M^{n'} \rfloor \le \delta(2 + M^{n'})$ (without daily rounding, where $V'_n - V_n = F(d_{k_*}, d_n)(S_{k_*} - V_{k_*})$ by Corollary~\ref{cor:4.7}(b)), violating reproducibility.
+\end{proposicao}
+\begin{proof}
+(a) Follows from Theorem~\ref{teo:5.8}(ii). (b) By Corollary~\ref{cor:4.7}(b) (first-order Taylor expansion with zero remainder in $x_*$), initial perturbation $|S_{k_*} - V_{k_*}| \le \delta$ produces exact terminal deviation $|V'_n - V_n| = F(d_{k_*}, d_n)|S_{k_*} - V_{k_*}| \le \delta M^{n'}$; subsequent errors accumulate by the triangle inequality.
+\end{proof}
+
+\begin{observacao}\label{obs:5.12}
+The control point in Theorem~\ref{teo:4.3} must persist high-precision state ($V_{k_*}$ or $(\tilde{V}_{k_*}, g_{k_*})$), and never merely published integer balance $S_{k_*}$.
+\end{observacao}
+
+\subsection{Internal Precision and Ziv Guard Bands}\label{sec:5.4}
+
+To avoid denominator growth $10^{pk}$ in rational arithmetic over $k$ days, state $\tilde{V}_k$ is propagated in fixed-point arithmetic with $q$ decimal guard places beyond the cent, certifying rounding decisions via Ziv guard bands \cite{Ziv1991, Muller2018}.
+
+\begin{proposicao}[Ziv guard band]\label{prop:5.13}
+Let $\tilde{V}_0 = x_0$, $g_0 = 0$, and for $k \ge 1$:
+\[
+\tilde{V}_k = \frac{\lfloor 10^q f_k \tilde{V}_{k-1} \rfloor}{10^q} + a_k, \qquad g_k = f_k g_{k-1} + 10^{-q}.
+\]
+Then $0 \le V_k - \tilde{V}_k \le g_k \le k M^{k-1} 10^{-q}$. Consequently, if $\rho(\tilde{V}_k) = \rho(\tilde{V}_k + g_k)$, then $S_k = \rho(V_k) = \rho(\tilde{V}_k)$ exactly.
+\end{proposicao}
+\begin{proof}
+The error $\epsilon_k = V_k - \tilde{V}_k$ satisfies $\epsilon_k = f_k \epsilon_{k-1} + w_k$ with $w_k \in [0, 10^{-q})$, so $0 \le \epsilon_k \le g_k$ by induction. Since $\tilde{V}_k \le V_k \le \tilde{V}_k + g_k$ and $\rho$ is non-decreasing, equality $\rho(\tilde{V}_k) = \rho(\tilde{V}_k + g_k)$ unambiguously fixes $\rho(V_k)$.
+\end{proof}
+
+For $n = 21$ and $q = 12$, guard bound $g_{21} < 2.2 \times 10^{-11}$ cents; only if $[\tilde{V}_k, \tilde{V}_k + g_k]$ straddles a rounding threshold of $\rho$ is exact rational evaluation of $V_k$ triggered from anchor.
+
+\subsection{Quantified Divergence}\label{sec:5.5}
+
+Table~\ref{tab:2} quantifies divergence $d = S_n - y_n$ across Monte Carlo simulations.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{@{}llcccc@{}}
+\toprule
+\textbf{Initial balance $x_0$} & \textbf{Legacy rule $\rho$} & $\mathbb{P}(d \neq 0)$ & \textbf{Mean $d$} & $\max |d|$ & \textbf{Theoretical bound} \\
+\midrule
+$\text{R\$}\,1,000$ to $\text{R\$}\,10^7$ & Truncation & $99.99\%$ & $+10.04$ & $19$ & $21.7$ \\
+                                          & Half-up    & $58.2\%$  & $+0.02$  & $10$ & $11.3$ \\
+\midrule
+$\text{R\$}\,10$ to $\text{R\$}\,1,000$   & Truncation & $98.1\%$  & $+10.38$ & $21$ & $21.7$ \\
+                                          & Half-up    & $94.9\%$  & $-0.30$  & $11$ & $11.3$ \\
+\bottomrule
+\end{tabular}
+\caption{$n = 21$ business days; benchmark DI rate drawn uniformly in $[8\%, 16\%]$ p.a.; daily factors truncated at 8 decimal places; 20,000 runs per line. Theoretical bound: $\delta(1 + n M^{n-1})$ with $M = 1.5^{1/252}$. With $q = 12$, the guard band required no rational fallback across any run.}
+\label{tab:2}
+\end{table}
+
+\subsection{The BiChronos Engine Reprocessing Algorithm}\label{sec:5.6}
+
+We formulate two equivalent specifications of the central algorithm: \textbf{Version A} (descriptive analytical specification) and \textbf{Version B} (structured imperative pseudocode).
+
+\begin{algoritmo}[Version A — Descriptive specification: Closed-anchor reprocessing, spatial Taylor, \texorpdfstring{$(P, J)$}{(P, J)} decomposition, and Ziv guard bands]\label{alg:5.14}
+\textbf{Input:} Closed-period anchor at index $k_a$ (date $a = d_{k_a}$) with state $(P_{k_a}, V_{k_a})$; event base $E_{\sigma'}$; day-count convention $(N, B)$ with $B \in \{252, 360, 365\}$; daily factors $f_k$ truncated at $p$ decimals; rounding operator $\rho$; guard precision $q \ge 0$. \textbf{Persisted state per day $k$:} $(P_k, \tilde{V}_k, g_k, S_k, D_k)$.
+\begin{enumerate}[label=\textbf{\arabic*.}]
+    \item \textbf{Control point determination.} By Theorem~\ref{teo:4.3}, determine $v_* = \min_{e \in N_\tau} t_v(e)$ and $k_* = N(t_0, v_*)$. If $v_* \le a$ (retroactive event penetrating closed period), do not mutate the closed period: jump to Step~6. Otherwise, load $(P_{k_* - 1}, \tilde{V}_{k_* - 1}, g_{k_* - 1}, S_{k_* - 1})$ from version $\sigma$.
+    \item \textbf{Deterministic propagation and \texorpdfstring{$(P_k, J_k)$}{(Pk, Jk)} decomposition.} For each $k = k_*, \dots, N(t_0, \tau)$:
+    \begin{itemize}
+        \item If full redemption occurs ($a_k = -\rho(f_k \tilde{V}_{k-1})$), extinguish position and fractional residue: $P_k = 0$, $\tilde{V}_k = 0$, $g_k = 0$ (Hypothesis~H3(iv)).
+        \item If proportional redemption of fraction $\alpha_k \in (0, 1)$ occurs (Modality B), update $P_k = (1 - \alpha_k)P_{k-1}$, $\tilde{V}_k = \lfloor 10^q (1 - \alpha_k) f_k \tilde{V}_{k-1} \rfloor / 10^q$, and $g_k = (1 - \alpha_k)f_k g_{k-1} + 10^{-q}$.
+        \item Otherwise (standard Modality A, $a_k \in \mathbb{Z}$): update principal $P_k = P_{k-1} + a_k$ and propagate
+        \[
+        \tilde{V}_k = \frac{\lfloor 10^q f_k \tilde{V}_{k-1} \rfloor}{10^q} + a_k, \qquad g_k = f_k g_{k-1} + 10^{-q}.
+        \]
+    \end{itemize}
+    \item \textbf{Certified publication.} If $\rho(\tilde{V}_k) = \rho(\tilde{V}_k + g_k)$, set $S_k = \rho(\tilde{V}_k)$ (Proposition~\ref{prop:5.13}); else, compute $V_k \in \mathbb{Q}$ from anchor solely to resolve $S_k = \rho(V_k)$, leaving $(\tilde{V}_k, g_k)$ intact. Published accrued interest is $J_{k,\text{pub}} = S_k - P_k$.
+    \item \textbf{Movement, versioning, and General Ledger.} Compute $D_k = S_k - S_{k-1} - a_k$. Store $(P_k, S_k, D_k, \tilde{V}_k, g_k)$ under version $\sigma'$, preserving version $\sigma$. At portfolio closing, update aggregate accrual provision $R_k^{\text{GL}} = \rho(\sum_i V_k^{(i)}) - \sum_i S_k^{(i)}$ (Remark~\ref{obs:5.9}).
+    \item \textbf{Period-end closing and legacy reconciliation.} Given reported closing balance $X_{\text{close}} \in \mathbb{Z}$, compute $r = X_{\text{close}} - S_n$. If $r = 0$, retain $V_n$ (fraction retention) or re-anchor $V_n^{\text{new}} := S_n, g_n^{\text{new}} := 0$ (fraction extinction). If $r \neq 0$ (legacy iterative stepping): if $|r| > \delta(1 + n M^{n-1})$, raise audit alert; if within bound, book reconciliation entry $(t_{\text{close}}, t_{\text{close}}, r)$ and re-anchor $V_n^{\text{new}} := X_{\text{close}}, g_n^{\text{new}} := 0$.
+    \item \textbf{Retroactive event hitting closed period (\texorpdfstring{$v_* \le a$}{v* <= a}, first-order Taylor \texorpdfstring{$R_2 \equiv 0$}{R2 = 0}, and exact integer apportionment).} When $v_* \le a$ and historical period up to $a$ remains locked:
+    \begin{enumerate}[label=(\alph*)]
+        \item By Theorem~\ref{teo:4.5}(ii) (spatial Taylor expansion with $R_2 \equiv 0$, $\frac{\partial \Psi_a}{\partial a(e)} = F(t_v(e), a)$), compute at anchor date $a$ exact principal and ideal interest adjustments:
+        \[
+        \Delta P = \sum_{e \in N_a} a(e) \in \mathbb{Z}, \qquad \Delta J_{\text{ideal}} = \sum_{e \in N_a} a(e)\big(F(t_v(e), a) - 1\big), \qquad \Delta V(a) = \Delta P + \Delta J_{\text{ideal}}.
+        \]
+        \item Because rounding operator $\rho$ is \textbf{non-additive} ($\rho(V_a^\sigma + \Delta V(a))$ can diverge from $\rho(V_a^\sigma) + \Delta P + \rho(\Delta J_{\text{ideal}})$ by $1$ cent when fractional components sum $\ge 1$), update anchor ideal balance to $V_a^{\sigma'} = V_a^\sigma + \Delta V(a)$, evaluate new published balance $S_{\sigma'}(a) = \rho(V_a^{\sigma'})$, and define the integer published interest adjustment by \textbf{exact integer difference}:
+        \[
+        \Delta J_{\text{pub}}(a) := \big(S_{\sigma'}(a) - S_\sigma(a)\big) - \Delta P \in \mathbb{Z}.
+        \]
+        \item Book at $t_c = \sigma'$ (effective at open $a^+$ of active period) segregated accounting entries for $\Delta P$ and $\Delta J_{\text{pub}}(a)$ (guaranteeing exact identity $S_\sigma(a) + \Delta P + \Delta J_{\text{pub}}(a) = S_{\sigma'}(a)$), and execute Steps~2 to 4 from $k_a + 1$ to $N(t_0, \tau)$ starting from $V_a^{\sigma'}$.
+    \end{enumerate}
+\end{enumerate}
+\end{algoritmo}
+
+\begin{algoritmo}[Version B — Structured pseudocode: Kernel \textsc{BiChronos\_Reprocess}]\label{alg:5.14b}
+\leavevmode\par\vspace{0.2em}
+\hrule height 0.8pt
+\vspace{0.3em}
+\noindent\textbf{Procedure} $\textsc{BiChronos\_Reprocess}\big(k_a, a, E_\sigma, E_{\sigma'}, \tau, (f_k)_{k\ge 1}, \rho, q, X_{\text{close}}, \text{reopen}\big)$\\
+\textbf{Input:} Closed-period anchor index $k_a = N(t_0, a)$; event bases $E_\sigma \subseteq E_{\sigma'}$; cutoff date $\tau \ge a$; daily factors $f_k \in \mathbb{Q}_{\ge 1}$; rounding operator $\rho : \mathbb{R} \to \mathbb{Z}$; guard precision $q \in \mathbb{N}_0$; closed balance $X_{\text{close}} \in \mathbb{Z} \cup \{\varnothing\}$; flag $\text{reopen} \in \{\text{true}, \text{false}\}$.\\
+\textbf{Output:} Versioned ledger tape $\big(P_k^{\sigma'}, \tilde{V}_k^{\sigma'}, g_k^{\sigma'}, S_k^{\sigma'}, J_{k,\text{pub}}^{\sigma'}, D_k^{\sigma'}\big)_{k=k_a}^{N(t_0, \tau)}$, provision $R_k^{\text{GL}}$, and adjustments $(\Delta P, \Delta J_{\text{pub}}, r)$.
+\vspace{0.2em}
+\hrule height 0.4pt
+\begin{enumerate}[label=\footnotesize\textbf{\arabic*:}, leftmargin=2.2em, itemsep=0.15em, topsep=0.3em]
+    \item $N_\tau \leftarrow \{e \in E_{\sigma'} \setminus E_\sigma : t_v(e) \le \tau\}$ \hfill $\triangleright$ \emph{Step 1: Control point determination (Theorem~\ref{teo:4.3})}
+    \item \textbf{if} $N_\tau = \emptyset$ \textbf{then}
+    \item \hspace{1.2em} \textbf{return} unchanged version $\sigma$ ledger tape \hfill $\triangleright$ \emph{Past stability (Proposition~\ref{prop:1.4})}
+    \item \textbf{end if}
+    \item $v_* \leftarrow \min_{e \in N_\tau} t_v(e)$; \quad $k_* \leftarrow N(t_0, v_*)$; \quad $n \leftarrow N(t_0, \tau)$
+    \item \textbf{if} $v_* \le a$ \textbf{and} $\neg\text{reopen}$ \textbf{then} \hfill $\triangleright$ \emph{Step 6: Spatial Taylor with $R_2 \equiv 0$ over locked period}
+    \item \hspace{1.2em} $N_a \leftarrow \{e \in N_\tau : t_v(e) \le a\}$
+    \item \hspace{1.2em} $\Delta P \leftarrow \sum_{e \in N_a} a(e)$; \quad $\Delta J_{\text{ideal}} \leftarrow \sum_{e \in N_a} a(e)\big(F(t_v(e), a) - 1\big)$; \quad $\Delta V(a) \leftarrow \Delta P + \Delta J_{\text{ideal}}$
+    \item \hspace{1.2em} $P_{k_a}^{\sigma'} \leftarrow P_{k_a}^\sigma + \Delta P$; \quad $\tilde{V}_{k_a}^{\sigma'} \leftarrow \tilde{V}_{k_a}^\sigma + \lfloor 10^q \Delta V(a) \rfloor / 10^q$; \quad $g_{k_a}^{\sigma'} \leftarrow g_{k_a}^\sigma + 10^{-q}$
+    \item \hspace{1.2em} $S_{k_a}^{\sigma'} \leftarrow \rho(V_a^\sigma + \Delta V(a))$; \quad $\Delta J_{\text{pub}}(a) \leftarrow (S_{k_a}^{\sigma'} - S_{k_a}^\sigma) - \Delta P$ \hfill $\triangleright$ \emph{Exact integer difference}
+    \item \hspace{1.2em} Book segregated entries $(\sigma', a^+, \Delta P)$ and $(\sigma', a^+, \Delta J_{\text{pub}}(a))$
+    \item \hspace{1.2em} $k_{\text{ini}} \leftarrow k_a + 1$
+    \item \textbf{else}
+    \item \hspace{1.2em} \textbf{for} $k = k_a$ \textbf{to} $k_* - 1$ \textbf{do} \hfill $\triangleright$ \emph{Invariant~I3: Copy unaffected prefix without recalculation}
+    \item \hspace{2.4em} $(P_k^{\sigma'}, \tilde{V}_k^{\sigma'}, g_k^{\sigma'}, S_k^{\sigma'}, J_{k,\text{pub}}^{\sigma'}, D_k^{\sigma'}) \leftarrow (P_k^\sigma, \tilde{V}_k^\sigma, g_k^\sigma, S_k^\sigma, J_{k,\text{pub}}^\sigma, D_k^\sigma)$
+    \item \hspace{1.2em} \textbf{end for}
+    \item \hspace{1.2em} $k_{\text{ini}} \leftarrow \max(k_a + 1, k_*)$
+    \item \textbf{end if}
+    \item \textbf{for} $k = k_{\text{ini}}$ \textbf{to} $n$ \textbf{do} \hfill $\triangleright$ \emph{Step 2: Fixed-point propagation and $(P_k, J_k)$ decomposition}
+    \item \hspace{1.2em} $a_k \leftarrow \sum_{e \in E_{\sigma'},\, N(t_0, t_v(e)) = k} a(e)$; \quad $\tilde{V}_k^- \leftarrow \lfloor 10^q f_k \tilde{V}_{k-1}^{\sigma'} \rfloor / 10^q$; \quad $g_k^- \leftarrow f_k g_{k-1}^{\sigma'} + 10^{-q}$
+    \item \hspace{1.2em} $S_k^{\text{pre}} \leftarrow \textsc{Resolve\_Rho}(\tilde{V}_k^-, g_k^-, k, \rho)$
+    \item \hspace{1.2em} \textbf{if} $a_k < 0$ \textbf{and} $a_k = -S_k^{\text{pre}}$ \textbf{then} \hfill $\triangleright$ \emph{Hypothesis~H3(iv): Full liquidation extinguishes fraction}
+    \item \hspace{2.4em} $P_k^{\sigma'} \leftarrow 0$; \quad $\tilde{V}_k^{\sigma'} \leftarrow 0$; \quad $g_k^{\sigma'} \leftarrow 0$; \quad $S_k^{\sigma'} \leftarrow 0$; \quad $J_{k,\text{pub}}^{\sigma'} \leftarrow 0$; \quad $D_k^{\sigma'} \leftarrow S_k^{\text{pre}} - S_{k-1}^{\sigma'}$
+    \item \hspace{1.2em} \textbf{else if} modality = \textsc{Pro\_Rata} \textbf{and} $\alpha_k \in (0, 1)$ \textbf{then} \hfill $\triangleright$ \emph{Hypothesis~H3(iii) Modality B}
+    \item \hspace{2.4em} $P_k^{\sigma'} \leftarrow \lfloor (1 - \alpha_k) P_{k-1}^{\sigma'} \rfloor$; \quad $\tilde{V}_k^{\sigma'} \leftarrow \lfloor 10^q (1 - \alpha_k)\tilde{V}_k^- \rfloor / 10^q$; \quad $g_k^{\sigma'} \leftarrow (1 - \alpha_k)g_k^- + 10^{-q}$
+    \item \hspace{2.4em} $S_k^{\sigma'} \leftarrow \textsc{Resolve\_Rho}(\tilde{V}_k^{\sigma'}, g_k^{\sigma'}, k, \rho)$; \quad $J_{k,\text{pub}}^{\sigma'} \leftarrow S_k^{\sigma'} - P_k^{\sigma'}$; \quad $D_k^{\sigma'} \leftarrow S_k^{\text{pre}} - S_{k-1}^{\sigma'}$
+    \item \hspace{1.2em} \textbf{else} \hfill $\triangleright$ \emph{Hypothesis~H3(ii)--(iii) Modality A: Integer monetary translation}
+    \item \hspace{2.4em} $P_k^{\sigma'} \leftarrow P_{k-1}^{\sigma'} + a_k$; \quad $\tilde{V}_k^{\sigma'} \leftarrow \tilde{V}_k^- + a_k$; \quad $g_k^{\sigma'} \leftarrow g_k^-$
+    \item \hspace{2.4em} \textbf{if} $\rho(\tilde{V}_k^{\sigma'}) = \rho(\tilde{V}_k^{\sigma'} + g_k^{\sigma'})$ \textbf{then} \hfill $\triangleright$ \emph{Step 3: Ziv guard band verification}
+    \item \hspace{3.6em} $S_k^{\sigma'} \leftarrow \rho(\tilde{V}_k^{\sigma'})$
+    \item \hspace{2.4em} \textbf{else}
+    \item \hspace{3.6em} Compute $V_k^{\sigma'} \in \mathbb{Q}$ from $k_a$ and set $S_k^{\sigma'} \leftarrow \rho(V_k^{\sigma'})$ \hfill $\triangleright$ \emph{Without mutating $(\tilde{V}_k^{\sigma'}, g_k^{\sigma'})$}
+    \item \hspace{2.4em} \textbf{end if}
+    \item \hspace{2.4em} $J_{k,\text{pub}}^{\sigma'} \leftarrow S_k^{\sigma'} - P_k^{\sigma'}$; \quad $D_k^{\sigma'} \leftarrow S_k^{\sigma'} - S_{k-1}^{\sigma'} - a_k$ \hfill $\triangleright$ \emph{Step 4: Movement and version}
+    \item \hspace{1.2em} \textbf{end if}
+    \item \hspace{1.2em} Persist immutable tuple $(\text{account}, \sigma', k, P_k^{\sigma'}, \tilde{V}_k^{\sigma'}, g_k^{\sigma'}, S_k^{\sigma'}, J_{k,\text{pub}}^{\sigma'}, D_k^{\sigma'})$
+    \item \textbf{end for}
+    \item Update General Ledger accrual provision: $R_n^{\text{GL}} \leftarrow \rho\big(\sum_i V_n^{(i)}\big) - \sum_i S_n^{(i)}$ \hfill $\triangleright$ \emph{Remark~\ref{obs:5.9}}
+    \item \textbf{if} $X_{\text{close}} \neq \varnothing$ \textbf{then} \hfill $\triangleright$ \emph{Step 5: Closing reconciliation and re-anchoring}
+    \item \hspace{1.2em} $r \leftarrow X_{\text{close}} - S_n^{\sigma'}$
+    \item \hspace{1.2em} \textbf{if} $|r| > \delta(1 + (n - k_a)M^{n - k_a - 1})$ \textbf{then} \textbf{raise} $\textsc{Data\_Audit\_Alert}(r)$ \textbf{end if}
+    \item \hspace{1.2em} \textbf{if} $r \neq 0$ \textbf{then} book reconciliation entry $(t_{\text{close}}, t_{\text{close}}, r)$ and re-anchor $\tilde{V}_n^{\text{new}} \leftarrow X_{\text{close}}, g_n^{\text{new}} \leftarrow 0$ \textbf{end if}
+    \item \textbf{end if}
+\end{enumerate}
+\hrule height 0.8pt
+\vspace{0.2em}
+\end{algoritmo}
+
+\begin{proposicao}[Correctness of Algorithms~\ref{alg:5.14} and \ref{alg:5.14b}]\label{prop:5.15}
+For all $k \ge k_*$, published snapshot $S_k$ generated by Algorithms~\ref{alg:5.14} and \ref{alg:5.14b} matches the cumulative snapshot $\rho(V_k)$ of Definition~\ref{def:5.7} evaluated from anchor, regardless of $k_*$ and for all $q \ge 0$. Exact ledger closure holds (Theorem~\ref{teo:5.8}(iii)), spatial Taylor accuracy $R_2 \equiv 0$ holds (Theorem~\ref{teo:4.5}), exact integer decomposition $S_{\sigma'}(a) - S_\sigma(a) = \Delta P + \Delta J_{\text{pub}}(a)$ holds in Step~6, and $D_k \ge 0$ (Proposition~\ref{prop:5.10}).
+\end{proposicao}
+\begin{proof}
+Step~3 reproduces $\rho(V_k)$ exactly (Proposition~\ref{prop:5.13}) without altering $(\tilde{V}_k, g_k)$, preserving determinism from $k_* - 1$ (Proposition~\ref{prop:5.11}(a)). Exactness of $\Delta V(a)$ in Step~6(a) follows from $R_2 \equiv 0$ (Theorem~\ref{teo:4.5}(ii)), and identity $S_\sigma(a) + \Delta P + \Delta J_{\text{pub}}(a) = S_{\sigma'}(a)$ in Step~6(b) is algebraic by definition of $\Delta J_{\text{pub}}(a)$.
+\end{proof}
+
+\section{Suite of 20 Formal Invariants}\label{sec:6}
+
+We formalize the 20 invariants of the BiChronos Engine with their preconditions, postconditions, verification procedures, and theoretical foundations.
+
+\subsection{Events and Versions}
+
+\begin{itemize}
+    \item \textbf{I1 (Append-only).}
+    \begin{itemize}
+        \item \emph{Preconditions:} Event base $E_\sigma$ at horizon $\sigma \in \mathbb{Z}$ and batch of new events/reversals $L_{\sigma'}$ with $\sigma < t_c(e) \le \sigma'$ and $t_v(e) > t_0$.
+        \item \emph{Postconditions:} $E_{\sigma'} = E_\sigma \sqcup L_{\sigma'}$, $E_\sigma \subseteq E_{\sigma'}$, and strict immutability of all elements in $E_\sigma$.
+        \item \emph{Algorithm (\texttt{Alg-I1}):} Ingest records in append-only storage (reversal of $(t_c^0, v, a)$ generates $(\sigma', v, -a)$); verify cryptographic hash preservation of $E_\sigma$ in $O(\#E_\sigma)$.
+        \item \emph{Foundation:} Definition~\ref{def:1.1}.
+    \end{itemize}
+
+    \item \textbf{I2 (Version immutability and reproducibility).}
+    \begin{itemize}
+        \item \emph{Preconditions:} Version $\sigma$ recorded with $(P^\sigma, V^\sigma, S^\sigma, D^\sigma, \tilde{V}^\sigma, g^\sigma)$ and subsequent reprocessing at $\sigma' > \sigma$.
+        \item \emph{Postconditions:} Version $\sigma$ remains unmutated; recalculating on dataset $\mathcal{D}_\sigma = (x_0, (f_k), E_\sigma)$ reproduces bit-for-bit the identical series.
+        \item \emph{Algorithm (\texttt{Alg-I2}):} Persist versions under immutable compound key $(\text{account}, \sigma', k)$; in audit mode ($O(n)$), re-execute Algorithm~\ref{alg:5.14} on $E_\sigma$ and assert bitwise equality.
+        \item \emph{Foundation:} Proposition~\ref{prop:4.9} and Steps~3--4 of Algorithm~\ref{alg:5.14}.
+    \end{itemize}
+
+    \item \textbf{I3 (Temporal locality).}
+    \begin{itemize}
+        \item \emph{Preconditions:} $E_\sigma \subseteq E_{\sigma'}$ such that every $e \in E_{\sigma'} \setminus E_\sigma$ satisfies $t_v(e) > \tau$.
+        \item \emph{Postconditions:} For all $k \le N(t_0, \tau)$, $(P_k^{\sigma'}, V_k^{\sigma'}, S_k^{\sigma'}, D_k^{\sigma'}) = (P_k^\sigma, V_k^\sigma, S_k^\sigma, D_k^\sigma)$.
+        \item \emph{Algorithm (\texttt{Alg-I3}):} Identify $v_* = \min_{E_{\sigma'}\setminus E_\sigma} t_v(e)$ and $k_* = N(t_0, v_*)$; copy without recalculation indices $k < k_*$ and assert zero delta in $O(k_*)$.
+        \item \emph{Foundation:} Proposition~\ref{prop:1.4} and Theorem~\ref{teo:4.3}.
+    \end{itemize}
+
+    \item \textbf{I4 (Invariance under transaction recording order).}
+    \begin{itemize}
+        \item \emph{Preconditions:} Two event bases $E^{(1)}, E^{(2)}$ sharing identical projected multiset $\{(t_v(e), a(e)) : e \in E_\sigma, t_v(e) \le \tau\}$.
+        \item \emph{Postconditions:} $(V_k^{(1)}, S_k^{(1)}, D_k^{(1)}) = (V_k^{(2)}, S_k^{(2)}, D_k^{(2)})$ for all $k \le N(t_0, \tau)$, matching Definition~\ref{def:4.1}.
+        \item \emph{Algorithm (\texttt{Alg-I4}):} Sort and aggregate events strictly by value date $t_v(e)$; in test mode ($O(n)$), randomly shuffle transaction ingestion order and assert equality.
+        \item \emph{Foundation:} Lemma~\ref{lem:4.2} and Invariant~I8.
+    \end{itemize}
+
+    \item \textbf{I5 (Additivity of simultaneous events).}
+    \begin{itemize}
+        \item \emph{Preconditions:} Events $(t_{c,1}, v, a)$ and $(t_{c,2}, v, b)$ sharing value date $v$ under Modality A.
+        \item \emph{Postconditions:} Exact trajectory equivalence of $(V_k, S_k, D_k)$ with single aggregated event $(\max(t_{c,1}, t_{c,2}), v, a + b)$.
+        \item \emph{Algorithm (\texttt{Alg-I5}):} Sum $a_k = \sum_{N(t_0, t_v(e))=k} a(e)$ prior to applying $T_{a_k}$; assert $T_a(T_b(x)) = T_{a+b}(x)$.
+        \item \emph{Foundation:} $T_a \circ T_b = T_{a+b}$.
+    \end{itemize}
+
+    \item \textbf{I6 (Neutral reversal).}
+    \begin{itemize}
+        \item \emph{Preconditions:} Event base $E_{\sigma'} = E_\sigma \cup \{(t_{c,1}, v, a), (t_{c,2}, v, -a)\}$ under Modality A.
+        \item \emph{Postconditions:} $(P_k^{\sigma'}, V_k^{\sigma'}, S_k^{\sigma'}, D_k^{\sigma'}) = (P_k^\sigma, V_k^\sigma, S_k^\sigma, D_k^\sigma)$ for all $k \ge 0$.
+        \item \emph{Algorithm (\texttt{Alg-I6}):} Ingest paired event/reversal at $v$, reprocess from $v$, and assert state invariance in $O(n - k_*)$.
+        \item \emph{Foundation:} Invariant~I5 with $a + (-a) = 0$ and $T_{-a} \circ T_a = \mathrm{id}_{\mathbb{R}}$.
+    \end{itemize}
+\end{itemize}
+
+\subsection{Time and Flow}
+
+\begin{itemize}
+    \item \textbf{I7 (Identity).}
+    \begin{itemize}
+        \item \emph{Preconditions:} Dates $s, t \in \mathbb{Z}$ with $N(t_0, s) = N(t_0, t)$ (identical date or non-business day plateau).
+        \item \emph{Postconditions:} $N(s,t) = 0$, $F(s,t) = 1$, and $\Phi_{s \to t} = \mathrm{id}_{\mathbb{R}}$.
+        \item \emph{Algorithm (\texttt{Alg-I7}):} If $g(t) - g(s) = 0$, return $F \leftarrow 1$ and maintain state unchanged in $O(1)$.
+        \item \emph{Foundation:} Lemma~\ref{lem:2.1}, Lemma~\ref{lem:3.1}, and Proposition~\ref{prop:3.5}.
+    \end{itemize}
+
+    \item \textbf{I8 (Exact cocycle property).}
+    \begin{itemize}
+        \item \emph{Preconditions:} Dates $s \le t \le u$ and rational daily factors $f_k \in \mathbb{Q}_{>0}$ under daily accrual (Remark~\ref{obs:5.2}).
+        \item \emph{Postconditions:} $F(s,u) = F(s,t)F(t,u)$ holds exactly in $\mathbb{Q}$ and $\Phi_{t \to u} \circ \Phi_{s \to t} = \Phi_{s \to u}$.
+        \item \emph{Algorithm (\texttt{Alg-I8}):} Compute $F(s,t) = \prod_{k=N(t_0,s)+1}^{N(t_0,t)} f_k$ without intermediate truncation; assert $F(s,u) - F(s,t)F(t,u) = 0$ in $\mathbb{Q}$.
+        \item \emph{Foundation:} Lemma~\ref{lem:3.3}, Corollary~\ref{cor:3.4}, and Remark~\ref{obs:5.2}.
+    \end{itemize}
+
+    \item \textbf{I9 (Invertibility).}
+    \begin{itemize}
+        \item \emph{Preconditions:} Balance state $V_\tau$ at $\tau \ge s \ge t_0$, factors $f_k > 0$, and events in $(s, \tau]$ under Modality A (without full liquidation in the interval).
+        \item \emph{Postconditions:} The inverse formula of Proposition~\ref{prop:4.8} exactly retrieves $V_s$ (and $x_0$ for $s = t_0$).
+        \item \emph{Algorithm (\texttt{Alg-I9}):} Starting from $z \leftarrow V_\tau \in \mathbb{Q}$, divide by factors $F(v_j, v_{j+1})$ and subtract $a_j$ in reverse order; assert $z = V_s$ in $O(n)$.
+        \item \emph{Foundation:} Theorem~\ref{teo:3.2} and Proposition~\ref{prop:4.8}.
+    \end{itemize}
+
+    \item \textbf{I10 (Monotonicity).}
+    \begin{itemize}
+        \item \emph{Preconditions:} Two instances with $x_0 \le x_0'$ and $a_k \le a_k'$ ($\forall k$), identical factors $f_k \ge 1$, and identical operator $\rho$.
+        \item \emph{Postconditions:} $V_k \le V_k'$, $\tilde{V}_k \le \tilde{V}_k'$, and $S_k \le S_k'$ for all $k \ge 0$.
+        \item \emph{Algorithm (\texttt{Alg-I10}):} Propagate both trajectories and assert $V_k \le V_k'$ and $S_k \le S_k'$ at each day $k$ in $O(n)$.
+        \item \emph{Foundation:} $\partial_x \Psi_\tau = F(s,t) > 0$ and monotonicity of $\rho$ (Definition~\ref{def:5.3}).
+    \end{itemize}
+
+    \item \textbf{I11 (Linearity of $V$ and Spatial Taylor Exactness with Zero Remainder \texorpdfstring{$R_2 \equiv 0$}{R2 = 0}).}
+    \begin{itemize}
+        \item \emph{Preconditions:} Control point states $x_*, x_* + \delta x_* \in \mathbb{R}$, event vectors $\mathbf{a}^\sigma, \mathbf{a}^\sigma + \delta\mathbf{a}$ under Modality A (gross of tax, Remark~\ref{obs:1.6}), and scalars $\alpha, \beta \in \mathbb{R}$.
+        \item \emph{Postconditions:} (i) $V_k(\alpha x_0 + \beta x_0', \alpha a + \beta a') = \alpha V_k(x_0, a) + \beta V_k(x_0', a')$; (ii) the second-order Taylor remainder of map $\Psi_\tau(x_*, \mathbf{a})$ vanishes identically in $\mathbb{Q}$:
+        \[
+        R_2(\delta x_*, \delta\mathbf{a}) := \Psi_\tau(x_* + \delta x_*, \mathbf{a}^\sigma + \delta\mathbf{a}) - \Psi_\tau(x_*, \mathbf{a}^\sigma) - F(v_*, \tau)\delta x_* - \sum_{j=1}^m F(v_j, \tau)\delta a_j = 0.
+        \]
+        \item \emph{Algorithm (\texttt{Alg-I11}):} Evaluate $\Psi_\tau(x_* + \delta x_*, \mathbf{a}^\sigma + \delta\mathbf{a}) - \Psi_\tau(x_*, \mathbf{a}^\sigma)$ via complete propagation in $\mathbb{Q}$, subtract the first-order differential $F(v_*, \tau)\delta x_* + \sum_{j=1}^m F(v_j, \tau)\delta a_j$, and assert $R_2 = 0$ exactly in $O(n)$.
+        \item \emph{Foundation:} Theorem~\ref{teo:4.5} and Corollary~\ref{cor:4.7}.
+    \end{itemize}
+\end{itemize}
+
+\subsection{Published Snapshot}
+
+\begin{itemize}
+    \item \textbf{I12 (Integer and uniformly bounded publication).}
+    \begin{itemize}
+        \item \emph{Preconditions:} State $V_k \in \mathbb{R}$ and operator $\rho$ with bound $\delta \in [1/2, 1]$.
+        \item \emph{Postconditions:} $S_k \in \mathbb{Z}$ and $|S_k - V_k| \le \delta$ for all $k \ge 0$.
+        \item \emph{Algorithm (\texttt{Alg-I12}):} Runtime assertion ($O(1)$): verify $S_k \in \mathbb{Z}$ and $\tilde{V}_k - \delta \le S_k \le \tilde{V}_k + g_k + \delta$.
+        \item \emph{Foundation:} Theorem~\ref{teo:5.8}(i).
+    \end{itemize}
+
+    \item \textbf{I13 (Yield invariance under integer cash flows).}
+    \begin{itemize}
+        \item \emph{Preconditions:} State $V_{k-1} \ge 0$, factor $f_k \ge 1$, and integer cash flow $a_k \in \mathbb{Z}$ under Modality A (without full liquidation).
+        \item \emph{Postconditions:} $D_k = \rho(f_k V_{k-1}) - \rho(V_{k-1})$, invariant to $a_k$.
+        \item \emph{Algorithm (\texttt{Alg-I13}):} Compute $S_k^{\text{pre}} = \rho(f_k V_{k-1})$, $S_k = S_k^{\text{pre}} + a_k$, and assert in $O(1)$ that $D_k = S_k^{\text{pre}} - S_{k-1}$.
+        \item \emph{Foundation:} Definition~\ref{def:5.3} and Proposition~\ref{prop:5.10}.
+    \end{itemize}
+
+    \item \textbf{I14 (Non-negative movement).}
+    \begin{itemize}
+        \item \emph{Preconditions:} Hypothesis (H3) with $f_k \ge 1$ and $V_{k-1} \ge 0$.
+        \item \emph{Postconditions:} $D_k \ge 0$ for all $k \ge 1$.
+        \item \emph{Algorithm (\texttt{Alg-I14}):} Assert $D_k \ge 0$ at Step~4 of Algorithm~\ref{alg:5.14} in $O(1)$.
+        \item \emph{Foundation:} Proposition~\ref{prop:5.10}.
+    \end{itemize}
+
+    \item \textbf{I15 (Accounting conservation on subintervals).}
+    \begin{itemize}
+        \item \emph{Preconditions:} Sequences $(S_k), (D_k), (a_k)$ generated by Algorithm~\ref{alg:5.14} and indices $0 \le j \le k \le n$.
+        \item \emph{Postconditions:} $\sum_{i=j+1}^k D_i = S_k - S_j - \sum_{i=j+1}^k a_i$ (and $S_k = P_k + J_{k,\text{pub}}$).
+        \item \emph{Algorithm (\texttt{Alg-I15}):} Accumulate integer sums of $D_i$ and $a_i$ and assert $(S_k - S_j) - (\Sigma_D + \Sigma_a) = 0$ in $O(k - j)$.
+        \item \emph{Foundation:} Theorem~\ref{teo:5.8}(iii).
+    \end{itemize}
+
+    \item \textbf{I16 (Dominance under truncation).}
+    \begin{itemize}
+        \item \emph{Preconditions:} Hypothesis (H3) and rounding operator $\rho(x) = \lfloor x \rfloor$ ($\delta = 1$).
+        \item \emph{Postconditions:} $y_n \le S_n \le V_n$ and $0 \le S_n - y_n \le \lfloor n M^{n-1} \rfloor$.
+        \item \emph{Algorithm (\texttt{Alg-I16}):} Run $y_k$ and $S_k$ and assert $0 \le S_k - y_k \le \lfloor k M^{k-1} \rfloor$ for all $k$ in $O(n)$.
+        \item \emph{Foundation:} Theorem~\ref{teo:5.8}(iv).
+    \end{itemize}
+
+    \item \textbf{I17 (Control point fidelity in $V$).}
+    \begin{itemize}
+        \item \emph{Preconditions:} High-precision state $(\tilde{V}_{k_* - 1}, g_{k_* - 1}, S_{k_* - 1})$ persisted at $k_* - 1$.
+        \item \emph{Postconditions:} Reprocessing from $k_*$ to $n$ reproduces $(V_k, S_k, D_k, \tilde{V}_k, g_k)$ identical to evaluation from anchor.
+        \item \emph{Algorithm (\texttt{Alg-I17}):} Load $(\tilde{V}_{k_* - 1}, g_{k_* - 1})$ at Step~1; in audit mode ($O(n)$), compare against evaluation from $k=0$.
+        \item \emph{Foundation:} Proposition~\ref{prop:5.11}(a) and Step~3 of Algorithm~\ref{alg:5.14}.
+    \end{itemize}
+
+    \item \textbf{I18 (Reprocessing compositionality).}
+    \begin{itemize}
+        \item \emph{Preconditions:} Three recording horizons $\sigma_1 \le \sigma_2 \le \sigma_3$ with $E_{\sigma_1} \subseteq E_{\sigma_2} \subseteq E_{\sigma_3}$.
+        \item \emph{Postconditions:} Reprocessing $\sigma_1 \to \sigma_2 \to \sigma_3$ via control points, direct reprocessing $\sigma_1 \to \sigma_3$, and direct evaluation of $E_{\sigma_3}$ from anchor yield identical ledger tapes.
+        \item \emph{Algorithm (\texttt{Alg-I18}):} Execute all three paths in test mode ($O(n)$) and assert component-wise equality.
+        \item \emph{Foundation:} Theorem~\ref{teo:4.3}, Proposition~\ref{prop:4.9}, and Invariant~I17.
+    \end{itemize}
+
+    \item \textbf{I19 (Ziv guard band precision).}
+    \begin{itemize}
+        \item \emph{Preconditions:} Guard precision $q \ge 0$, state $(\tilde{V}_k, g_k)$ from Step~2, and exact state $V_k \in \mathbb{Q}$.
+        \item \emph{Postconditions:} $0 \le V_k - \tilde{V}_k \le g_k$ and $S_k$ from Step~3 equals $\rho(V_k)$ for all $q \ge 0$.
+        \item \emph{Algorithm (\texttt{Alg-I19}):} Test $\rho(\tilde{V}_k) = \rho(\tilde{V}_k + g_k)$ in $O(1)$ and trigger rational fallback when false.
+        \item \emph{Foundation:} Proposition~\ref{prop:5.13} and Proposition~\ref{prop:5.15}.
+    \end{itemize}
+
+    \item \textbf{I20 (Closing residue and exact integer segregation).}
+    \begin{itemize}
+        \item \emph{Preconditions:} Closed balance $X_{\text{close}} \in \mathbb{Z}$ and snapshot $S_n = \rho(V_n)$ (Step~5), or closed period adjustment at $a$ (Step~6).
+        \item \emph{Postconditions:} (i) $r = X_{\text{close}} - S_n = 0$ if $X_{\text{close}} = \rho(V_n)$, and $|r| \le \delta(1 + n M^{n-1})$ if $X_{\text{close}} = y_n$; (ii) at Step~6, $\Delta P + \Delta J_{\text{pub}}(a) = S_{\sigma'}(a) - S_\sigma(a)$ holds exactly in integer cents without rounding non-additivity leakage.
+        \item \emph{Algorithm (\texttt{Alg-I20}):} Assert $|r| \le \delta(1 + n M^{n-1})$ at Step~5 and $S_\sigma(a) + \Delta P + \Delta J_{\text{pub}}(a) = S_{\sigma'}(a)$ at Step~6 in $O(1)$.
+        \item \emph{Foundation:} Theorem~\ref{teo:5.8}(iv) and Proposition~\ref{prop:5.15}.
+    \end{itemize}
+\end{itemize}
+
+\subsection{Computational Verification and Mutation Testing}\label{sec:6.4}
+
+Tables~\ref{tab:3}, \ref{tab:4}, and \ref{tab:5} report verification results from property-based and mutation test suites, yielding zero violations across all tested configurations.
+
+\begin{table}[htbp]
+\centering
+\small
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}llccc@{\hspace{0.8em}}llccc@{}}
+\toprule
+\textbf{Code} & \textbf{Invariant} & \textbf{Scope} & \textbf{Cases} & \textbf{Viol.} & \textbf{Code} & \textbf{Invariant} & \textbf{Scope} & \textbf{Cases} & \textbf{Viol.} \\
+\midrule
+I1  & Append-only         & R & 2,000 & 0 & I11 & Spatial Taylor $R_2\equiv 0$ & T & 2,000 & 0 \\
+I2  & Immutability        & A & 4,000 & 0 & I12 & Integer bounded             & R & 4,000 & 0 \\
+I3  & Temporal locality   & T & 4,000 & 0 & I13 & Integer flow invariance     & R & 4,000 & 0 \\
+I4  & Order independence  & T & 2,000 & 0 & I14 & Non-negative movement       & R & 4,000 & 0 \\
+I5  & Simultaneous events & T & 2,000 & 0 & I15 & Subinterval conservation    & R & 4,000 & 0 \\
+I6  & Neutral reversal    & T & 4,000 & 0 & I16 & Truncation dominance        & T & 2,000 & 0 \\
+I7  & Identity            & T & 2,000 & 0 & I17 & High-precision control pt   & A & 4,000 & 0 \\
+I8  & Exact cocycle       & T & 2,000 & 0 & I18 & Compositionality            & A & 4,000 & 0 \\
+I9  & Invertibility       & A & 2,000 & 0 & I19 & Ziv guard band              & R & 4,000 & 0 \\
+I10 & Monotonicity        & T & 4,000 & 0 & I20 & Closing exact segregation   & R & 4,000 & 0 \\
+\bottomrule
+\end{tabular}
+\caption{Verification of the 20 formal invariants: test counts and violations (\textbf{R}: runtime assertion, \textbf{A}: audit mode, \textbf{T}: automated test suite).}
+\label{tab:3}
+\end{table}
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{@{}llc@{}}
+\toprule
+\textbf{Injected Defect (Mutant)} & \textbf{Catching Invariants} & \textbf{Kills (out of 300)} \\
+\midrule
+Control point stores $S$ instead of $V$           & I18                          & 206 \\
+Control point shifted by one day                  & I18                          & 226 \\
+Accumulated factor truncated (approximate cocycle) & I4, I8                       & 253, 269 \\
+$S$ computed via legacy iterative stepping        & I12, I13, I17, I18, I19, I20 & 230 to 300 \\
+Underestimated guard band ($g_k \equiv 0$, $q=2$)  & I19                          & 300 \\
+Value date shifted by one day                     & I3, I4, I18                  & 109, 211, 206 \\
+\bottomrule
+\end{tabular}
+\caption{Mutation testing: mutant kill sensitivity across six injected architectural defects.}
+\label{tab:4}
+\end{table}
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{@{}cccc@{}}
+\toprule
+\textbf{Basis $B$} & \textbf{Horizon $n$} & \textbf{Invariants Checked (I1 to I20)} & \textbf{Violations} \\
+\midrule
+252 & 21 & 32,000 & 0 \\
+360 & 30 & 32,000 & 0 \\
+365 & 31 & 32,000 & 0 \\
+\bottomrule
+\end{tabular}
+\caption{Verification of the 20 invariants across all three annual day-count bases.}
+\label{tab:5}
+\end{table}
+
+\section{Numerical Examples Across Three Scenarios}\label{sec:7}
+
+We consider an illustrative benchmark rate $\text{DI} = 10.65\%$ p.a., day-count basis $B = 252$, daily factor truncated at 8 decimal places $f = 1.00040167$, rounding operator $\rho = \lfloor \cdot \rfloor$ (floor truncation), calendar of October 2026 (Oct 12 national holiday), and monetary balances expressed in cents.
+
+\subsection{Scenario A: Baseline, Five Contiguous Business Days}\label{sec:7.1}
+
+An initial investment of $\text{R\$}\,10,000.00$ ($x_0 = P_0 = 1,000,000$ cents, booked on Friday Oct 16), without intermediate cash flows, evaluated from Monday Oct 19 ($k=1$) to Friday Oct 23 ($k=5$).
+
+\begin{table}[htbp]
+\centering
+\footnotesize
+\setlength{\tabcolsep}{3.8pt}
+\begin{tabular}{@{}lcclcccccc@{}}
+\toprule
+\textbf{Date} & $k$ & $\theta_k = k/252$ & \multicolumn{1}{c}{$f_k$} & $F(0,k)$ & $V_k$ & $S_k$ & $D_k$ & $y_k$ & $d_k$ \\
+\midrule
+19/10 Mon & 1 & $0.003968$ & $1.00040167$ & $1.0004016700$ & $1,000,401.6700$ & $1,000,401$ & $401$ & $1,000,401$ & $0$ \\
+20/10 Tue & 2 & $0.007936$ & $1.00040167$ & $1.0008035013$ & $1,000,803.5013$ & $1,000,803$ & $402$ & $1,000,802$ & $1$ \\
+21/10 Wed & 3 & $0.011904$ & $1.00040167$ & $1.0012054940$ & $1,001,205.4940$ & $1,001,205$ & $402$ & $1,001,203$ & $2$ \\
+22/10 Thu & 4 & $0.015873$ & $1.00040167$ & $1.0016076482$ & $1,001,607.6482$ & $1,001,607$ & $402$ & $1,001,605$ & $2$ \\
+23/10 Fri & 5 & $0.019841$ & $1.00040167$ & $1.0020099640$ & $1,002,009.9640$ & $1,002,009$ & $402$ & $1,002,007$ & $2$ \\
+\bottomrule
+\end{tabular}
+\caption{Scenario A. Truncation, $x_0 = 1,000,000$. Exact inversion: $\Phi_{5 \to 0}(V_5) = V_5 / F(0,5) = 1,000,000.0000$.}
+\label{tab:6}
+\end{table}
+
+\subsection{Scenario B: Retroactive Event, Taylor with \texorpdfstring{$R_2 \equiv 0$}{R2 = 0}, and Exact Integer Segregation \texorpdfstring{($\Delta P + \Delta J_{\text{pub}}$)}{(Delta P + Delta J)}}\label{sec:7.2}
+
+Identical initial balance, with a deposit of $\text{R\$}\,5,000.00$ ($a = 500,000$ cents) bearing value date Tuesday Oct 20 ($k=2$, end-of-day convention of Remark~\ref{obs:1.5}), recorded only on Friday Oct 23.
+
+\begin{table}[htbp]
+\centering
+\footnotesize
+\setlength{\tabcolsep}{4.2pt}
+\begin{tabular}{@{}lccccccc@{}}
+\toprule
+\textbf{Date} & $k$ & $V_k^\sigma$ & $S_k^\sigma$ & $V_k^{\sigma'}$ & $S_k^{\sigma'}$ & $\Delta V_k = \frac{\partial \Psi_k}{\partial a_2}a_2$ & $\Delta S_k = S_k^{\sigma'} - S_k^\sigma$ \\
+\midrule
+19/10 Mon & 1 & $1,000,401.6700$ & $1,000,401$ & $1,000,401.6700$ & $1,000,401$ & $0.0000$       & $0$ \\
+20/10 Tue & 2 & $1,000,803.5013$ & $1,000,803$ & $1,500,803.5013$ & $1,500,803$ & $500,000.0000$ & $500,000$ \\
+21/10 Wed & 3 & $1,001,205.4940$ & $1,001,205$ & $1,501,406.3290$ & $1,501,406$ & $500,200.8350$ & $500,201$ \\
+22/10 Thu & 4 & $1,001,607.6482$ & $1,001,607$ & $1,502,009.3989$ & $1,502,009$ & $500,401.7506$ & $500,402$ \\
+23/10 Fri & 5 & ---                & ---         & $1,502,612.7110$ & $1,502,612$ & $500,602.7470$ & --- \\
+\bottomrule
+\end{tabular}
+\caption{Scenario B. $a = 500,000$ cents, $t_v = \text{Oct 20}$, $t_c = \text{Oct 23}$; truncation. Spatial Taylor remainder $R_2 = V_k^{\sigma'} - V_k^\sigma - \frac{\partial \Psi_k}{\partial a_2}a_2 = 0.0000$ across all rows.}
+\label{tab:7}
+\end{table}
+
+\textbf{Analysis, Taylor Exactness ($R_2 = 0$), and Validation of Step~6(b):} For all $k \ge 2$, the ideal balance variation coincides to the final rational digit with the first-order Taylor term $\frac{\partial \Psi_k}{\partial a_2}a_2 = F(2,k)a_2$, with remainder $R_2 = 0$ (Theorem~\ref{teo:4.5}). At row $k=3$ (Oct 21), $\Delta V_3 = 500,200.8350$ ($\Delta P = 500,000$ and $\Delta J_{\text{ideal}} = 200.8350$). If $\Delta J_{\text{ideal}}$ were truncated in isolation ($\lfloor 200.8350 \rfloor = 200$), the sum $\Delta P + 200 = 500,200$ would diverge by $1$ cent from $\Delta S_3 = S_3^{\sigma'} - S_3^\sigma = 1,501,406 - 1,001,205 = 500,201$ (because sub-cent fractions $0.4940 + 0.8350 = 1.3290$ crossed an integer threshold). Under the exact integer difference rule of Step~6(b) of Algorithm~\ref{alg:5.14}, $\Delta J_{\text{pub}}(3) = \Delta S_3 - \Delta P = 500,201 - 500,000 = 201$ cents, closing exactly $S_3^\sigma + \Delta P + \Delta J_{\text{pub}}(3) = 1,501,406 = S_3^{\sigma'}$.
+
+\subsection{Scenario C: Holiday, Non-Business Day Event, and Sub-Cent Yield}\label{sec:7.3}
+
+Initial balance of $\text{R\$}\,10.00$ ($1,000$ cents, closed on Thursday Oct 08), with deposit of $\text{R\$}\,5.00$ ($500$ cents) bearing value date on the national holiday of Monday Oct 12.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{@{}llccccccr@{}}
+\toprule
+\textbf{Date} & \textbf{Type} & $N(t_0, t)$ & $252\,P(t)$ & \textbf{Applied factor $f$} & $V(t)$ & $y(t)$ & $S(t)$ & $d(t)$ \\
+\midrule
+08/10 Thu & Anchor       & 0 & $0.00$ & ---            & $1,000.0000$ & $1,000$ & $1,000$ & $0$ \\
+09/10 Fri & Business     & 1 & $1.00$ & $1.00040167$   & $1,000.4016$ & $1,000$ & $1,000$ & $0$ \\
+10/10 Sat & Non-business & 1 & $1.25$ & $1$ (plateau)  & $1,000.4016$ & $1,000$ & $1,000$ & $0$ \\
+11/10 Sun & Non-business & 1 & $1.50$ & $1$ (plateau)  & $1,000.4016$ & $1,000$ & $1,000$ & $0$ \\
+12/10 Mon & Holiday      & 1 & $1.75$ & $1$ (+ deposit)& $1,500.4016$ & $1,500$ & $1,500$ & $0$ \\
+13/10 Tue & Business     & 2 & $2.00$ & $1.00040167$   & $1,501.0043$ & $1,500$ & $1,501$ & $1$ \\
+14/10 Wed & Business     & 3 & $3.00$ & $1.00040167$   & $1,501.6072$ & $1,500$ & $1,501$ & $1$ \\
+15/10 Thu & Business     & 4 & $4.00$ & $1.00040167$   & $1,502.2103$ & $1,500$ & $1,502$ & $2$ \\
+\bottomrule
+\end{tabular}
+\caption{Scenario C. Deposit $a = 500$ cents on $t_v = \text{Oct 12}$ (holiday), $t_c = \text{Oct 13}$; truncation.}
+\label{tab:8}
+\end{table}
+
+\section{Relationship of Invariants with Central Bank Regulations}\label{sec:8}
+
+Tables~\ref{tab:9} and \ref{tab:10} map the regulatory requirements of the Central Bank of Brazil (BACEN), the National Monetary Council (CMN), and international financial accounting standards (IFRS) to the 20 formal invariants of the BiChronos Engine.
+
+\begin{table}[htbp]
+\centering
+\footnotesize
+\renewcommand{\arraystretch}{1.25}
+\begin{tabularx}{\textwidth}{@{}l >{\raggedright\arraybackslash}p{3.6cm} X >{\raggedright\arraybackslash}p{2.4cm} l@{}}
+\toprule
+\textbf{Code} & \textbf{Regulatory Standard} & \textbf{Mandate Summary} & \textbf{Supporting Invariants} & \textbf{Citation} \\
+\midrule
+N1 & Circular BCB 1,273/1987 (COSIF), chap.\ 1; Res.\ BCB 92/2021 & Accrual accounting in national currency, segregated Principal/Interest accounts $(P, J)$, and General Ledger reconciliation ($R_k^{\text{GL}}$). & I1, I2, I4, I6, I12, I15, I20 & \cite{N1} \\
+N2 & Res.\ CMN 4,966/2021 and Res.\ BCB 352/2023 (IFRS 9 convergence \cite{IASB}) & Amortized cost measurement using effective interest rates, equating present value of cash flows to gross carrying amount. & I7, I8, I9, I11, I14 & \cite{N2, IASB} \\
+N3 & CPC 23 (IAS 8 convergence \cite{IASB}), endorsed by Res.\ CMN 4,924/2021 & Prior period error rectification: retroactive effect identifiable via exact Taylor ($\Delta P + \Delta J_{\text{pub}}$, $R_2\equiv 0$) with immutable baseline preservation. & I2, I3, I6, I11, I17, I18, I20 & \cite{N3, IASB} \\
+N4 & Res.\ CMN 4,968/2021, art.\ 5 (internal controls) & Internal control systems for electronic processing guaranteeing data integrity and audit trails. & I1, I2, I15, I18, I19, I20 & \cite{N4} \\
+N5 & Joint Res.\ CMN/BCB 18/2025, art.\ 3 & Pre-submission data validation tests, exact reconciliations between reported metrics and internal systems. & I15, I20 & \cite{N5} \\
+N6 & Res.\ CMN 4,910/2021 and Res.\ CMN 5,067/2023 (independent audit) & Independent audit support via deterministic recomputation from reproducible event bases. & I2, I18 & \cite{N6} \\
+N7 & Market conventions (ANBIMA/B3) and contract law & Day-count conventions ($B \in \{252, 360, 365\}$); official banking holiday calendars and daily factor truncation. & I7, I8 & \cite{N7, AssafNeto, Fabozzi2006, ISDA2006} \\
+N8 & Institutional rounding and fractional policies & Documented definitions of rounding operator $\rho$, precision $q$, partial drawdown modality, and period-end residues. & I12, I13, I16, I19, I20 & Internal Policy \\
+\bottomrule
+\end{tabularx}
+\caption{Applicable banking standards, functional requirements, and supporting mathematical invariants.}
+\label{tab:9}
+\end{table}
+
+\begin{table}[htbp]
+\centering
+\small
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}lll@{\hspace{0.8em}}lll@{}}
+\toprule
+\textbf{Code} & \textbf{Invariant} & \textbf{Standards} & \textbf{Code} & \textbf{Invariant} & \textbf{Standards} \\
+\midrule
+I1  & Append-only         & N1, N4           & I11 & Taylor $R_2\equiv 0$ / Linear & N2, N3 \\
+I2  & Immutability        & N1, N3, N4, N6   & I12 & Integer bounded               & N1, N8 \\
+I3  & Temporal locality   & N3               & I13 & Integer cash flow             & N8 \\
+I4  & Order independence  & N1               & I14 & Movement $\ge 0$              & N2 \\
+I5  & Simultaneous events & --- (structural) & I15 & Ledger conservation           & N1, N4, N5 \\
+I6  & Neutral reversal    & N1, N3           & I16 & Truncation dominance          & N8 \\
+I7  & Identity            & N2, N7           & I17 & Control point in $V$          & N3 \\
+I8  & Exact cocycle       & N2, N7           & I18 & Compositionality              & N3, N4, N6 \\
+I9  & Invertibility       & N2               & I19 & Ziv guard band                & N4, N8 \\
+I10 & Monotonicity        & --- (structural) & I20 & Closing residue segregation   & N1, N3, N4, N5, N8 \\
+\bottomrule
+\end{tabular}
+\caption{Bidirectional traceability matrix: invariant $\leftrightarrow$ regulatory standard.}
+\label{tab:10}
+\end{table}
+
+\section{Discussion and Theoretical-Operational Synthesis}\label{sec:discussao}
+
+The architecture of the BiChronos Engine consolidates the theoretical, numerical, and regulatory requirements demonstrated throughout the preceding sections. Eight fundamental pillars underpin the model:
+
+\begin{enumerate}[label=\textbf{\arabic*.}]
+    \item \textbf{Spatial Taylor Expansion with Zero Remainder ($R_2 \equiv 0$) and Distinction from Temporal Expansion (Theorems~\ref{teo:3.2} and \ref{teo:4.5}, Remark~\ref{obs:4.6}, Corollary~\ref{cor:4.7}, and Invariant~I11):} We have proved that the second spatial derivative $\partial_{xx}^2 \varphi_{s,t}$ and the Hessian matrix $D^2 \Psi_\tau(x_*, \mathbf{a})$ vanish identically in the linear gross-of-tax regime. This property guarantees that the first-order spatial Taylor expansion on state and cash flow variables $(x_*, \mathbf{a})$ possesses exact zero remainder $R_2^{\text{sp}} \equiv 0$ for finite perturbations of arbitrary magnitude. In contrast, the temporal expansion in step size $\Delta\theta$ exhibits a strictly positive remainder under compound interest ($R_2^{\text{temp}}(\Delta\theta) = \frac{1}{2}r^2 e^{r\xi}(\Delta\theta)^2 > 0$), whose omission would distort the 8th decimal place of official exchange factors; hence, the engine evaluates compounding factors without temporal approximation and confines exact remainder annihilation strictly to the spatial manifold.
+    \item \textbf{Aggregate Accrual Reconciliation in the General Ledger (Remark~\ref{obs:5.9} and Step~4 of Algorithm~\ref{alg:5.14}):} Cumulative sub-cent divergence between customer sub-ledgers and the institution's total economic accrual liability is systematically balanced via the Sub-Cent Accrual Provision $R_k^{\text{GL}} = \rho(\sum_i V_k^{(i)}) - \sum_i S_k^{(i)}$, enforcing rigorous double-entry integrity within the COSIF chart of accounts.
+    \item \textbf{Two-Dimensional Ledger Decomposition $(P_k, J_k)$ (Remark~\ref{obs:2.8}, Hypothesis~H3, and Definition~\ref{def:5.7}):} The engine couples to continuous balance $V_k$ an explicit accounting segregation between Principal $P_k$ and Accrued Interest $J_k = V_k - P_k$ ($J_{k,\text{pub}} = S_k - P_k$), fulfilling amortized cost accounting standards.
+    \item \textbf{Partial Redemption Modalities (Hypothesis~H3(iii) and Step~2 of Algorithm~\ref{alg:5.14}):} We formalize the distinction between integer monetary translation drawdowns (Modality A) and proportional share/unit liquidations across fraction $\alpha_k \in (0, 1)$ (\emph{pro-rata}, Modality B, which retires principal, interest, and sub-cent residuals proportionally while maintaining linear homogeneity with $R_2 \equiv 0$).
+    \item \textbf{Tax Boundary Delineation (Remark~\ref{obs:1.6}):} The principle of linear superposition governs gross-of-tax balances; in retail positions subject to withholding taxes via FIFO tax-lot consumption, retroactive events triggering tax-bracket adjustments are recomputed from control point $v_*$.
+    \item \textbf{Formulation Under Carathéodory Conditions (Hypothesis~H2, Lemma~\ref{lem:3.1}, and Theorem~\ref{teo:3.2}):} Adopting Carathéodory regularity conditions mathematically validates continuous flow propagation under piecewise-constant benchmark rates ($L^\infty_{\text{loc}}$) with zero measure on holiday and weekend plateaus.
+    \item \textbf{Intraday End-of-Day Timing Convention (Remark~\ref{obs:1.5}):} We fix the end-of-day cutoff, wherein daily factor $f_k$ remunerates the overnight holding of closing balance from $d_{k-1}$ into $d_k$, while cash flows bearing value date $d_k$ enter the position to earn yield across subsequent transitions.
+    \item \textbf{Exact Integer Segregation Under Rounding Non-Additivity (Step~6(b) of Algorithm~\ref{alg:5.14}, Invariant~I20, and Table~\ref{tab:7}):} In the presence of non-additive rounding operators $\rho$, retroactive adjustment entries on closed periods are calculated via exact integer difference $\Delta J_{\text{pub}}(a) := (S_{\sigma'}(a) - S_\sigma(a)) - \Delta P$, preventing penny leakage across balance sheet rubrics.
+\end{enumerate}
+
+\begin{thebibliography}{99}
+
+\bibitem{AssafNeto}
+A.~Assaf~Neto.
+\newblock \emph{Matem{\'a}tica Financeira e suas Aplica{\c{c}}{\~o}es}.
+\newblock Editora Atlas, S{\~a}o Paulo, 14th ed., 2019.
+\newblock ISBN: 978-8597020472.
+
+\bibitem{Brezis2011}
+H.~Brezis.
+\newblock \emph{Functional Analysis, Sobolev Spaces and Partial Differential Equations}.
+\newblock Universitext. Springer, New York, 2011.
+\newblock \doi{10.1007/978-0-387-70914-7}.
+
+\bibitem{CoddingtonLevinson1955}
+E.~A. Coddington and N.~Levinson.
+\newblock \emph{Theory of Ordinary Differential Equations}.
+\newblock International Series in Pure and Applied Mathematics. McGraw-Hill, New York, 1955.
+
+\bibitem{Date2014}
+C.~J. Date, H.~Darwen, and N.~A. Lorentzos.
+\newblock \emph{Time and Relational Theory: Temporal Databases in the Relational Model and SQL}.
+\newblock Morgan Kaufmann, Waltham, MA, 2nd ed., 2014.
+\newblock ISBN: 978-0128006313.
+
+\bibitem{Fabozzi2006}
+F.~J. Fabozzi.
+\newblock \emph{Fixed Income Mathematics: Analytical \& Statistical Techniques}.
+\newblock McGraw-Hill, New York, 4th ed., 2006.
+\newblock ISBN: 978-0071460736.
+
+\bibitem{Fowler2021}
+M.~Fowler.
+\newblock Bitemporal history.
+\newblock \emph{ThoughtWorks / martinfowler.com}, 2021.
+\newblock Available at: \url{https://martinfowler.com/articles/bitemporal-history.html}.
+
+\bibitem{Hartman2002}
+P.~Hartman.
+\newblock \emph{Ordinary Differential Equations}.
+\newblock Classics in Applied Mathematics, vol.~38. Society for Industrial and Applied Mathematics (SIAM), Philadelphia, 2nd ed., 2002.
+\newblock \doi{10.1137/1.9780898719222}.
+
+\bibitem{Higham2002}
+N.~J. Higham.
+\newblock \emph{Accuracy and Stability of Numerical Algorithms}.
+\newblock Society for Industrial and Applied Mathematics (SIAM), Philadelphia, 2nd ed., 2002.
+\newblock \doi{10.1137/1.9780898718027}.
+
+\bibitem{HirschSmaleDevaney2013}
+M.~W. Hirsch, S.~Smale, and R.~L. Devaney.
+\newblock \emph{Differential Equations, Dynamical Systems, and an Introduction to Chaos}.
+\newblock Academic Press, Waltham, MA, 3rd ed., 2013.
+\newblock ISBN: 978-0123820105.
+
+\bibitem{IASB}
+IASB.
+\newblock \emph{International Financial Reporting Standard 9: Financial Instruments} (2014) and \emph{International Accounting Standard 8: Accounting Policies, Changes in Accounting Estimates and Errors}.
+\newblock International Accounting Standards Board (IASB), IFRS Foundation, London, 2020.
+
+\bibitem{ISDA2006}
+ISDA.
+\newblock \emph{2006 ISDA Definitions}.
+\newblock International Swaps and Derivatives Association, New York, 2006.
+
+\bibitem{JensenSnodgrass1999}
+C.~S. Jensen and R.~T. Snodgrass.
+\newblock Temporal data management.
+\newblock \emph{IEEE Transactions on Knowledge and Data Engineering}, 11(1):36--44, 1999.
+\newblock \doi{10.1109/69.755613}.
+
+\bibitem{Kulkarni2012}
+K.~Kulkarni and J.-E. Michels.
+\newblock Temporal features in {SQL:2011}.
+\newblock \emph{ACM SIGMOD Record}, 41(3):34--43, 2012.
+\newblock \doi{10.1145/2380776.2380786}.
+
+\bibitem{LimaAnalise2}
+E.~L. Lima.
+\newblock \emph{Curso de An{\'a}lise}, volume~2.
+\newblock Projeto Euclides. Instituto de Matem{\'a}tica Pura e Aplicada (IMPA), Rio de Janeiro, 11th ed., 2009.
+\newblock ISBN: 978-8524400491.
+
+\bibitem{Muller2018}
+J.-M. Muller, N.~Brunie, F.~de~Dinechin, C.-P. Jeannerod, M.~Joldes, V.~Lef{\`e}vre, G.~Melquiond, N.~Revol, and S.~Torres.
+\newblock \emph{Handbook of Floating-Point Arithmetic}.
+\newblock Birkh{\"a}user, Cham, 2nd ed., 2018.
+\newblock \doi{10.1007/978-3-319-76526-6}.
+
+\bibitem{Snodgrass1999}
+R.~T. Snodgrass.
+\newblock \emph{Developing Time-Oriented Database Applications in SQL}.
+\newblock Morgan Kaufmann Publishers, San Francisco, CA, 1999.
+\newblock ISBN: 978-1558604360.
+
+\bibitem{Sotomayor1979}
+J.~Sotomayor.
+\newblock \emph{Li{\c{c}}{\~o}es de Equa{\c{c}}{\~o}es Diferenciais Ordin{\'a}rias}.
+\newblock Projeto Euclides. Instituto de Matem{\'a}tica Pura e Aplicada (IMPA), Rio de Janeiro, 1979.
+\newblock ISBN: 978-8524400507.
+
+\bibitem{Ziv1991}
+A.~Ziv.
+\newblock Fast evaluation of elementary mathematical functions with correctly rounded last bit.
+\newblock \emph{ACM Transactions on Mathematical Software}, 17(3):410--423, 1991.
+\newblock \doi{10.1145/114697.114704}.
+
+\bibitem{N1}
+Banco Central do Brasil.
+\newblock Circular n{\textordmasculine} 1,273, December 29, 1987. Chart of Accounts for Financial Institutions (COSIF).
+\newblock Updated by Resolu{\c{c}}{\~a}o BCB n{\textordmasculine} 92, May 6, 2021. \emph{Di{\'a}rio Oficial da Uni{\~a}o}.
+
+\bibitem{N2}
+Conselho Monet{\'a}rio Nacional and Banco Central do Brasil.
+\newblock Resolu{\c{c}}{\~a}o CMN n{\textordmasculine} 4,966, November 25, 2021 (Accounting Criteria for Financial Instruments and Amortized Cost Measurement) and Resolu{\c{c}}{\~a}o BCB n{\textordmasculine} 352, November 23, 2023. \emph{Di{\'a}rio Oficial da Uni{\~a}o}.
+
+\bibitem{N3}
+Comit{\^e} de Pronunciamentos Cont{\'a}beis and Conselho Monet{\'a}rio Nacional.
+\newblock Technical Pronouncement CPC 23: Accounting Policies, Changes in Accounting Estimates and Errors (2009).
+\newblock Endorsed in the National Financial System by Resolu{\c{c}}{\~a}o CMN n{\textordmasculine} 4,924, June 24, 2021.
+
+\bibitem{N4}
+Conselho Monet{\'a}rio Nacional.
+\newblock Resolu{\c{c}}{\~a}o CMN n{\textordmasculine} 4,968, November 25, 2021. Internal Control Systems for Authorized Financial Institutions. \emph{Di{\'a}rio Oficial da Uni{\~a}o}.
+
+\bibitem{N5}
+Conselho Monet{\'a}rio Nacional and Banco Central do Brasil.
+\newblock Joint Resolution n{\textordmasculine} 18, January 21, 2025. Data Governance and Quality Requirements for Regulatory Financial Submissions. \emph{Di{\'a}rio Oficial da Uni{\~a}o}.
+
+\bibitem{N6}
+Conselho Monet{\'a}rio Nacional.
+\newblock Resolu{\c{c}}{\~a}o CMN n{\textordmasculine} 4,910, May 27, 2021 and Resolu{\c{c}}{\~a}o CMN n{\textordmasculine} 5,067, April 20, 2023. Independent Audit Services for Authorized Institutions. \emph{Di{\'a}rio Oficial da Uni{\~a}o}.
+
+\bibitem{N7}
+B3 S.A. and ANBIMA.
+\newblock \emph{Formulas Manual for Public and Private Fixed Income Securities: Methodology and Daily Factors of DI-Overnight Rate}.
+\newblock B3 S.A. -- Brasil, Bolsa, Balc{\~a}o and ANBIMA, S{\~a}o Paulo, 2024.
+\newblock Available at: \url{https://www.anbima.com.br}.
+
+\end{thebibliography}
+
+\end{document}
