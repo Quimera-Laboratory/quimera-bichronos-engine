@@ -1,0 +1,902 @@
+\documentclass[11pt, a4paper]{article}
+\usepackage[a4paper, margin=2.2cm]{geometry}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[portuguese]{babel}
+\usepackage{enumitem}
+\setlist[itemize]{label=-}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage[table]{xcolor}
+\usepackage[protrusion=true,expansion=false]{microtype}
+\usepackage{hyperref}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!60!black,
+    citecolor=blue!60!black,
+    urlcolor=blue!60!black
+}
+
+\theoremstyle{definition}
+\newtheorem{definicao}{Definição}[section]
+\newtheorem{algoritmo}[definicao]{Algoritmo}
+
+\theoremstyle{plain}
+\newtheorem{teorema}[definicao]{Teorema}
+\newtheorem{lema}[definicao]{Lema}
+\newtheorem{proposicao}[definicao]{Proposição}
+\newtheorem{corolario}[definicao]{Corolário}
+
+\theoremstyle{remark}
+\newtheorem{observacao}[definicao]{Observação}
+
+\title{\textbf{BiChronos Engine: Reprocessamento de Snapshots por Data Valor}\\[0.3em]\large Modelo de fluxo difeomórfico de Carathéodory, decomposição patrimonial $(P, J)$, invariantes formais e algoritmo de âncora fechada\\[0.2em]\normalsize Notas técnicas — Versão 8.0 (Consolidada)}
+\author{\textbf{Quimera Labs}}
+\date{31 de outubro de 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+\noindent Formaliza-se a arquitetura matemática, financeira e contábil do \textbf{BiChronos Engine} (v8.0), um kernel determinístico para o reprocessamento retroativo de saldos (\emph{snapshots}) em sistemas bitemporais (data contábil $\times$ data valor). O tempo financeiro é modelado por um difeomorfismo de $\mathbb{R}$ e a remuneração por um fluxo $\varphi_{s,t}$ de difeomorfismos espaciais de classe $C^1$ sob condições de Carathéodory, compatibilizando rigorosamente taxas constantes por partes e platôs de dias não úteis. Demonstra-se que o reprocessamento a partir de um ponto de controle é bem definido, independe da ordem de registro, é reversível e, no regime linear bruto de tributos, reduz-se à superposição exata de fatores de capitalização. Acopla-se ao estado ideal $V_k$ a decomposição contábil bidimensional em Principal e Juros $(P_k, J_k)$, distinguindo aportes por translação, baixas proporcionais (\emph{pro-rata}) em resgates parciais e extinção de fração residual em liquidações totais. Quantifica-se a divergência de centavos entre snapshots diários e período fechado, propõe-se o Algoritmo do BiChronos Engine com banda de guarda (Ziv), reconciliação de competência agregada no Razão Geral (COSIF) e segregação inteira exata $\Delta S = \Delta P + \Delta J_{\text{pub}}$ sob não-aditividade do operador de arredondamento $\rho$. Fixam-se os 20 invariantes formais (com pré-condições, pós-condições e algoritmos de verificação), ilustram-se três cenários numéricos e mapeiam-se os invariantes às normas do Banco Central do Brasil (COSIF, Resolução CMN 4.966/2021, Resolução BCB 352/2023 e CPC 23) nas bases $B \in \{252, 360, 365\}$.
+\end{abstract}
+
+\section{Estrutura bitemporal, convenção intradiária e escopo tributário}\label{sec:1}
+
+Datas são elementos de $\mathbb{Z}$ (dias corridos). Fixa-se uma data inicial de ancoragem $t_0 \in \mathbb{Z}$ e um saldo inicial $x_0 \in \mathbb{R}$. A distinção entre data de registro e data de efeito constitui a modelagem bitemporal canônica em bancos de dados temporais \cite{Snodgrass1999, JensenSnodgrass1999, Date2014, Kulkarni2012, Fowler2021}.
+
+\begin{definicao}[Evento e base bitemporal de eventos]\label{def:1.1}
+Um evento é uma tripla $e = (t_c(e), t_v(e), a(e)) \in \mathbb{Z} \times \mathbb{Z} \times \mathbb{R}$, em que $t_c(e)$ é a data contábil (de registro), $t_v(e) > t_0$ é a data valor (de efeito econômico) e $a(e)$ é o valor monetário líquido. Uma base é um conjunto finito $E$ de eventos indexados por identificadores únicos (ou um multiconjunto finito). Para $\sigma \in \mathbb{Z}$, a informação conhecida até a versão contábil $\sigma$ é
+\[
+E_\sigma = \{e \in E : t_c(e) \le \sigma\}.
+\]
+\end{definicao}
+
+Correções operacionais são representadas exclusivamente por novos eventos: o estorno de $(t_c, t_v, a)$ registrado em $t_c' > t_c$ é o evento compensatório $(t_c', t_v, -a)$. Nenhum evento é editado ou removido fisicamente, de modo que $E_\sigma \subseteq E_{\sigma'}$ sempre que $\sigma \le \sigma'$.
+
+\begin{definicao}[Saldo nominal]\label{def:1.2}
+Para $\tau, \sigma \in \mathbb{Z}$, o saldo nominal acumulado em $\tau$ segundo a informação em $\sigma$ é
+\[
+B(\tau; \sigma) = x_0 + \sum_{e \in E_\sigma,\, t_v(e) \le \tau} a(e).
+\]
+\end{definicao}
+
+\begin{lema}[Aditividade em $\sigma$]\label{lem:1.3}
+Se $\sigma \le \sigma'$, então
+\[
+B(\tau; \sigma') - B(\tau; \sigma) = \sum_{e \in E_{\sigma'} \setminus E_\sigma,\, t_v(e) \le \tau} a(e).
+\]
+\end{lema}
+\begin{proof}
+Como $E_\sigma \subseteq E_{\sigma'}$, o somatório sobre $E_{\sigma'}$ decompõe-se disjuntamente na soma sobre $E_\sigma$ mais a soma sobre $E_{\sigma'} \setminus E_\sigma$; subtraindo $B(\tau; \sigma)$, resta a segunda parcela.
+\end{proof}
+
+\begin{proposicao}[Estabilidade do passado]\label{prop:1.4}
+Se todo $e \in E_{\sigma'} \setminus E_\sigma$ satisfaz $t_v(e) > \tau$, então $B(\tau; \sigma') = B(\tau; \sigma)$. Reciprocamente, $B(\tau; \sigma') \neq B(\tau; \sigma)$ exige a existência de ao menos um evento $e \in E$ com $\sigma < t_c(e) \le \sigma'$ e $t_v(e) \le \tau$ (evento retroativo em relação a $\tau$).
+\end{proposicao}
+\begin{proof}
+Imediata do Lema~\ref{lem:1.3}: a soma sobre $\{e \in E_{\sigma'} \setminus E_\sigma : t_v(e) \le \tau\}$ é vazia no primeiro caso, e só pode ser não nula se o referido conjunto for não vazio.
+\end{proof}
+
+\begin{observacao}[Convenção temporal intradiária: pernoite \emph{overnight} e cota de fechamento]\label{obs:1.5}
+Para eliminar qualquer ambiguidade operacional sobre se um evento com data valor $t_v = d_k$ sofre ou não a incidência do fator $f_k$, o BiChronos Engine fixa a \textbf{convenção de fechamento (\emph{end-of-day})}: o fator diário $f_k$ do índice de acumulação $k$ remunera o pernoite (\emph{overnight}) do saldo existente no fechamento de $d_{k-1}$ durante a passagem $d_{k-1} \to d_k$. Os fluxos líquidos com data valor $t_v = d_k$ ingressam na posição após a aplicação de $f_k$ (compondo o saldo de fechamento de $d_k$) e passam a render a partir do pernoite seguinte $d_k \to d_{k+1}$ (fator $f_{k+1}$). Caso um produto específico opere sob convenção de abertura (\emph{start-of-day}, onde um aporte feito na manhã de $d_k$ já pernoita na própria noite de $d_k$), basta indexar o pernoite da noite de $d_k$ como o passo $k \to k+1$ ou mapear a data valor de abertura para o fechamento imediatamente anterior $d_{k-1}$.
+\end{observacao}
+
+\begin{observacao}[Escopo tributário: saldos brutos vs.\ retenção de IOF/IRRF por lotes PEPS]\label{obs:1.6}
+As propriedades de superposição linear (Corolário~\ref{cor:4.5} e Invariante~I11) modelam estritamente o \textbf{saldo bruto de impostos} (ou carteiras isentas/interbancárias, como Depósitos Interfinanceiros --- DI, reservas bancárias e posições institucionais). Em produtos de renda fixa de varejo ou contas remuneradas sujeitas à retenção na fonte de IOF regressivo (1 a 29 dias corridos) e IRRF (tabela regressiva de $22{,}5\%$ a $15\%$) no ato do resgate, o valor líquido debitado ou o imposto retido depende da idade de cada lote consumido (regra PEPS/FIFO) e da razão não linear $\max(0, V_k - P_k)$. Nesses produtos, quando um evento retroativo $e \in N_\tau$ é inserido antes de um resgate tributado já ocorrido em $v_{\text{resg}} \in (t_v(e), \tau]$, o reprocessamento a partir do ponto de controle $v_* = t_v(e)$ (Teorema~\ref{teo:4.3}) permanece integralmente válido, mas exige a reexecução do motor de lotes PEPS e o recálculo da alíquota tributária do resgate em $v_{\text{resg}}$, não se aplicando a superposição linear simples sem recomputação do tributo.
+\end{observacao}
+
+\section{Tempo financeiro e compatibilidade difeomórfica}\label{sec:2}
+
+Seja $B \in \{252, 360, 365\}$ a base anual de contagem e $D \subseteq \mathbb{Z}$ o conjunto dos dias de acumulação: os dias úteis bancários se $B = 252$, e todos os dias corridos $\mathbb{Z}$ se $B \in \{360, 365\}$ (\S\ref{sec:2.1}). Enumera-se $D$ por $(d_k)_{k \in \mathbb{Z}}$ estritamente crescente, com $d_0 = t_0$ (ou $d_0 = \max\{d \in D : d \le t_0\}$).
+
+\medskip\noindent\textbf{Hipótese (H1):} Existe $G \in \mathbb{N}$ com $1 \le d_k - d_{k-1} \le G$ para todo $k \in \mathbb{Z}$ (calendário bi-infinito com lacunas de feriados/fins de semana limitadas por $G$). Para $s \le t$ em $\mathbb{Z}$, $N(s,t) = \#(D \cap (s,t])$, e para $s > t$, $N(s,t) = -N(t,s)$.
+
+\begin{lema}\label{lem:2.1}
+\begin{enumerate}[label=(\roman*)]
+    \item $N(s,u) = N(s,t) + N(t,u)$ para quaisquer $s, t, u \in \mathbb{Z}$.
+    \item $N(d_j, d_k) = k - j$ para $j \le k$.
+    \item Se $B = 252$, $t \mapsto N(s,t)$ não é injetiva: $N(s,t) = 0$ para datas consecutivas $s < t$ sem dia útil em $(s,t]$; se $B \in \{360, 365\}$, $N(s,t) = t - s$, que é injetiva.
+\end{enumerate}
+\end{lema}
+\begin{proof}
+(i) $(s,u] = (s,t] \sqcup (t,u]$ para $s \le t \le u$. (ii) $D \cap (d_j, d_k] = \{d_{j+1}, \dots, d_k\}$. (iii) Para $B = 252$, sábado e domingo não pertencem a $D$; para $B \in \{360, 365\}$, $D = \mathbb{Z}$.
+\end{proof}
+
+Pelo item (iii), com $B = 252$ a contagem discreta $t \mapsto N(t_0, t)/B$ não é injetiva nos fins de semana e feriados. A imersão do calendário discreto em uma variedade diferenciável unidimensional é feita por interpolação afim por partes e regularização por convolução; com $B \in \{360, 365\}$ ela já é globalmente afim (Proposição~\ref{prop:2.5}).
+
+\begin{proposicao}[Regularização difeomórfica do tempo civil]\label{prop:2.2}
+Seja $P : \mathbb{R} \to \mathbb{R}$ a função contínua afim por partes definida nos nós de $D$ por $P(d_k) = k/B$. Sejam $\eta \in (0, 1/2]$ e $\rho_\eta \in C_c^\infty([-\eta, \eta])$ um núcleo regularizante par com $\rho_\eta \ge 0$ e $\int_{-\eta}^{\eta} \rho_\eta(y)\,dy = 1$. Então $\Theta_\eta = P * \rho_\eta$ satisfaz:
+\begin{enumerate}[label=(\roman*)]
+    \item $\Theta_\eta \in C^\infty(\mathbb{R})$;
+    \item $\dfrac{1}{BG} \le \Theta_\eta'(t) \le \dfrac{1}{B}$ para todo $t \in \mathbb{R}$;
+    \item $|\Theta_\eta(t) - P(t)| \le \dfrac{\eta}{B}$ para todo $t \in \mathbb{R}$; em particular, nos nós $d_k$, $|\Theta_\eta(d_k) - k/B| \le \dfrac{\eta}{2B}\left|\frac{1}{d_k - d_{k-1}} - \frac{1}{d_{k+1} - d_k}\right| < \dfrac{\eta}{B}$ (sendo $\Theta_\eta(d_k) = k/B$ exatamente sempre que $d_k - d_{k-1} = d_{k+1} - d_k$);
+    \item $\Theta_\eta$ é um difeomorfismo $C^\infty$ de $\mathbb{R}$ sobre $\mathbb{R}$.
+\end{enumerate}
+\end{proposicao}
+\begin{proof}
+(i) Convolução de função contínua com núcleo $C_c^\infty$ \cite[Cap.~4]{Brezis2011}. (ii) $P$ é localmente absolutamente contínua com derivada quase sempre igual a $P'(t) = \frac{1}{B(d_k - d_{k-1})} \in [\frac{1}{BG}, \frac{1}{B}]$ em $(d_{k-1}, d_k)$; logo $\Theta_\eta' = P' * \rho_\eta$ pertence ao mesmo intervalo. (iii) Como $P$ é $\frac{1}{B}$-Lipschitz, $|\Theta_\eta(t) - P(t)| \le \frac{1}{B}\int_{-\eta}^{\eta} |y|\rho_\eta(y)\,dy \le \frac{\eta}{B}$. (iv) $\Theta_\eta'(t) \ge \frac{1}{BG} > 0$ implica que $\Theta_\eta$ é bijeção estritamente crescente de $\mathbb{R}$ sobre $\mathbb{R}$ com inversa $C^\infty$ pelo teorema da função inversa \cite[vol.~2]{LimaAnalise2}.
+\end{proof}
+
+\begin{observacao}[Coesão entre o difeomorfismo $\Theta_\eta$ e o fluxo discreto nos platôs]\label{obs:2.3}
+Para que a bijeção estrita $\Theta_\eta$ na base $B = 252$ não gere fluência espúria de juros durante fins de semana e feriados ($t \notin D$), o modelo contínuo da Seção~\ref{sec:3} é formulado sob as \textbf{condições de Carathéodory} (Hipótese~H2), permitindo que a taxa instantânea $r(\theta)$ seja descontínua (mensurável em $L^\infty_{\text{loc}}(\mathbb{R})$) com suporte concentrado exclusivamente na imagem dos dias úteis $[\Theta_\eta(d_k - 1), \Theta_\eta(d_k)]$ e identicamente nula ($r(\theta) = 0$) na imagem dos dias não úteis $(\Theta_\eta(d_{k-1}), \Theta_\eta(d_k - 1)]$. Desse modo, a mudança de coordenada temporal $\Theta_\eta$ é um difeomorfismo $C^\infty$, o fluxo espacial $\varphi_{s,t} : \mathbb{R} \to \mathbb{R}$ é um difeomorfismo $C^\infty$ para cada par $(s,t)$, e a integral da taxa sobre qualquer subintervalo de fim de semana ou feriado é exatamente zero ($\Phi_{s \to t} = \mathrm{id}_{\mathbb{R}}$), eliminando qualquer desvio entre o modelo contínuo e a contagem operacional exata $N(t_0, t)/B$.
+\end{observacao}
+
+\subsection{Bases 252, 360 e 365}\label{sec:2.1}
+
+A base $B$ fixa a unidade do tempo financeiro conforme o contrato do instrumento e a convenção de mercado \cite{AssafNeto, Fabozzi2006, ISDA2006}.
+
+\begin{definicao}[Convenção de contagem aditiva]\label{def:2.4}
+Uma convenção de contagem aditiva é um par $(g, B)$, com $g : \mathbb{Z} \to \mathbb{Z}$ não decrescente e $B \in \{252, 360, 365\}$; a contagem é $N(s,t) = g(t) - g(s)$. Exemplos: $B = 252$ com $g(t)$ igual ao número acumulado de dias úteis até $t$ (calendário ANBIMA); $B = 360$ (Actual/360) ou $B = 365$ (Actual/365 Fixed) com dias corridos, $g(t) = t$. A variante 30E/360 com $g(y,m,d) = 360y + 30m + \min(d, 30)$ depende apenas de cada data isoladamente e também define contagem aditiva $N(s,u) = N(s,t) + N(t,u)$.
+\end{definicao}
+
+\begin{proposicao}[Bases 360 e 365: sem platô]\label{prop:2.5}
+Se $g(t) = t$ (dias corridos), então $D = \mathbb{Z}$, $G = 1$ em (H1), $N(s,t) = t - s$, e $\Theta(t) = (t - t_0)/B$ é um difeomorfismo afim $C^\infty$ de $\mathbb{R}$ sobre $\mathbb{R}$ com $\Theta'(t) \equiv 1/B$ e $\Theta(d_k) = k/B$ exatamente ($\eta = 0$).
+\end{proposicao}
+\begin{proof}
+Como $d_k = t_0 + k$, $P(t) = (t - t_0)/B$ já é afim e $C^\infty$, com derivada constante $1/B > 0$ e inversa global $\theta \mapsto t_0 + B\theta$.
+\end{proof}
+
+\begin{observacao}[Conversão entre bases]\label{obs:2.6}
+Para a mesma taxa anual $i$, o fator de um período $[s,t]$ é $(1 + i)^{N(s,t)/B}$. Entre $B = 252$ e $B' \in \{360, 365\}$, a razão $N_{\text{du}}/N_{\text{cal}}$ varia conforme o período contenha fins de semana ou feriados; logo, não existe taxa anual constante $i'$ que reproduza o fator em todos os períodos simultaneamente, e alterar a base exige reprocessamento com os fatores da nova base. Entre 360 e 365 a conversão é fixa: $(1 + i_{365}) = (1 + i_{360})^{365/360}$.
+\end{observacao}
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{@{}llcccccc@{}}
+\toprule
+\textbf{Base $B$} & \textbf{Contagem} & $n$ & $f_B$ & $F = f_B^n$ & $V$ & $S$ & \textbf{Rend.} \\
+\midrule
+252 & dias úteis    & 5 & $1{,}00040167$ & $1{,}0020099640$ & $1.002.009{,}9640$ & $1.002.009$ & $2.009$ \\
+360 & dias corridos & 7 & $1{,}00028115$ & $1{,}0019697107$ & $1.001.969{,}7107$ & $1.001.969$ & $1.969$ \\
+365 & dias corridos & 7 & $1{,}00027730$ & $1{,}0019427155$ & $1.001.942{,}7155$ & $1.001.942$ & $1.942$ \\
+\bottomrule
+\end{tabular}
+\caption{Mesma taxa anual ($10{,}65\%$), $x_0 = 1.000.000$ centavos, de sexta-feira 16/10 a sexta-feira 23/10 (5 dias úteis, 7 dias corridos); fator diário truncado em 8 casas; operador $\rho = \lfloor \cdot \rfloor$. Nas bases 360 e 365 o fim de semana rende; ``Rend.'' em centavos (\texttt{gera\_bases.py}).}
+\label{tab:1}
+\end{table}
+
+\begin{observacao}[Independência de $B$]\label{obs:2.7}
+As Seções~\ref{sec:3} a \ref{sec:6} dependem de $B$ somente pelos fatores diários $f_k = \lfloor 10^p(1 + i_k)^{1/B}\rfloor / 10^p$ e pelo índice de acumulação $k$; os 20 invariantes (I1 a I20) valem identicamente nas três bases (Tabela~\ref{tab:5}).
+\end{observacao}
+
+\begin{observacao}[Decomposição patrimonial $(P, J)$ em capitalização composta e simples]\label{obs:2.8}
+Tanto na capitalização composta quanto na simples, a escrituração contábil bancária (COSIF) segrega o estado em dois componentes: o \textbf{Principal (ou Custo Amortizado de Entrada)} $P$ e os \textbf{Juros Acumulados (\emph{Accrual})} $J$, sendo o saldo total $V = P + J$.
+\begin{enumerate}[label=(\alph*)]
+    \item \emph{Na capitalização composta:} O fluxo contínuo evolui no espaço $(P, J) \in \mathbb{R}^2$ por $\varphi_{s,t}(P, J) = (P,\, P(F(s,t)-1) + F(s,t)J)$, cuja soma das coordenadas é exatamente $V(t) = P + J(t) = F(s,t)(P + J)$. A matriz jacobiana espacial é $\Big(\begin{smallmatrix} 1 & 0 \\ F(s,t)-1 & F(s,t) \end{smallmatrix}\Big)$, com determinante $F(s,t) > 0$ (difeomorfismo linear de $\mathbb{R}^2$ com cociclo exato e inversa $\varphi_{t,s}$).
+    \item \emph{Na capitalização simples:} O rendimento incide apenas sobre o principal $P$, e o fluxo é o cisalhamento linear $\varphi_{s,t}(P, J) = (P,\, J + i P N(s,t)/B)$, com determinante jacobiano igual a $1$.
+\end{enumerate}
+Em ambos os regimes, um aporte puro $a > 0$ atua por translação na primeira coordenada, $T_a(P, J) = (P + a, J)$, mantendo $V^+ = V + a$. O tratamento de retiradas ($a < 0$) é detalhado na Subseção~\ref{sec:5.2} (Hipótese~H3).
+\end{observacao}
+
+\section{Fluxo de remuneração sob condições de Carathéodory}\label{sec:3}
+
+No tempo financeiro $\theta \in \mathbb{R}$ (em anos de $B$ dias de acumulação), o saldo $x$ evolui segundo a equação diferencial ordinária
+\begin{equation}\label{eq:edo}
+\frac{dx}{d\theta} = f(\theta, x).
+\end{equation}
+
+\noindent\textbf{Hipótese (H2 — Regularidade de Carathéodory):} A função $f : \mathbb{R} \times \mathbb{R} \to \mathbb{R}$ satisfaz: (i) para cada $x \in \mathbb{R}$, $\theta \mapsto f(\theta, x)$ é mensurável à Lebesgue; (ii) para quase todo $\theta \in \mathbb{R}$, $x \mapsto f(\theta, x)$ é de classe $C^1(\mathbb{R})$, com $\theta \mapsto \partial_x f(\theta, x)$ mensurável; e (iii) existem funções localmente integráveis não negativas $\alpha, \beta \in L^1_{\text{loc}}(\mathbb{R})$ tais que $|f(\theta, x)| \le \alpha(\theta)(1 + |x|)$ e $|\partial_x f(\theta, x)| \le \beta(\theta)$ em todo compacto espacial. (Esta hipótese engloba tanto campos clássicos $f \in C^1(\mathbb{R} \times \mathbb{R})$ quanto taxas constantes por partes com saltos em feriados e mudanças diárias de taxa DI.)
+
+\begin{lema}[Existência global e cociclo]\label{lem:3.1}
+Sob (H2), para cada $(s, x) \in \mathbb{R}^2$ existe uma única solução global absolutamente contínua $t \mapsto x(t; s, x)$ de \eqref{eq:edo} (no sentido de Carathéodory, $x(t) = x + \int_s^t f(\theta, x(\theta))\,d\theta$) définie em todo $\mathbb{R}$. Definindo $\varphi_{s,t}(x) = x(t; s, x)$, valem as identidades de cociclo:
+\[
+\varphi_{s,s} = \mathrm{id}_{\mathbb{R}}, \qquad \varphi_{t,u} \circ \varphi_{s,t} = \varphi_{s,u} \qquad (\forall\, s, t, u \in \mathbb{R}).
+\]
+\end{lema}
+\begin{proof}
+Pelo teorema de existência e unicidade de Carathéodory \cite[Cap.~2]{CoddingtonLevinson1955} (ver também \cite{Hartman2002}), a condição de Lipschitz local em $x$ com constante integrável $\beta \in L^1_{\text{loc}}$ garante existência e unicidade locais. Da cota $|x(t)| \le |x| + \left|\int_s^t \alpha(\theta)(1 + |x(\theta)|)\,d\theta\right|$ e do lema de Gronwall integral, $|x(t)|$ é limitado em todo compacto, impedindo explosão em tempo finito. A propriedade de cociclo decorre da unicidade da solução passante por $(t, \varphi_{s,t}(x))$.
+\end{proof}
+
+\begin{teorema}[Fluxo espacial difeomórfico]\label{teo:3.2}
+Sob (H2), para cada par $(s, t) \in \mathbb{R}^2$ fixado, a aplicação espacial $\varphi_{s,t} : \mathbb{R} \to \mathbb{R}$ é um difeomorfismo de classe $C^1$ sobre $\mathbb{R}$, com inversa $\varphi_{s,t}^{-1} = \varphi_{t,s}$ e derivada espacial dada por
+\[
+\partial_x \varphi_{s,t}(x) = \exp\left(\int_s^t \partial_x f(\theta, x(\theta; s, x))\,d\theta\right) > 0.
+\]
+\end{teorema}
+\begin{proof}
+Pelo teorema de diferenciabilidade em relação aos dados iniciais para equações de Carathéodory \cite[Cap.~2, Thm.~4.1]{CoddingtonLevinson1955} e \cite[Cap.~V]{Hartman2002}, a aplicação $x \mapsto \varphi_{s,t}(x)$ é de classe $C^1$ e $y(t) = \partial_x \varphi_{s,t}(x)$ é a única solução absolutamente contínua da equação variacional linear $y(t) = 1 + \int_s^t \partial_x f(\theta, x(\theta; s, x))y(\theta)\,d\theta$, dada pela exponencial acima, estritamente positiva. Pelo Lema~\ref{lem:3.1}, $\varphi_{t,s} \circ \varphi_{s,t} = \mathrm{id}_{\mathbb{R}} = \varphi_{s,t} \circ \varphi_{t,s}$, donde $\varphi_{s,t}$ é bijeção com inversa $\varphi_{t,s} \in C^1(\mathbb{R})$.
+\end{proof}
+
+\begin{lema}[Reparametrização pelo tempo civil]\label{lem:3.3}
+Seja $\Theta : \mathbb{R} \to \mathbb{R}$ um difeomorfismo de classe $C^1$ estritamente crescente. Se $x(\theta)$ resolve \eqref{eq:edo}, então $z(t) = (x \circ \Theta)(t)$ resolve $z'(t) = \Theta'(t) f(\Theta(t), z(t))$ quase sempre. O fluxo em tempo civil é
+\[
+\Phi_{s \to t} := \varphi_{\Theta(s), \Theta(t)},
+\]
+que herda do Teorema~\ref{teo:3.2} a estrutura de difeomorfismo espacial $C^1$, o cociclo $\Phi_{t \to u} \circ \Phi_{s \to t} = \Phi_{s \to u}$ e a invertibilidade $\Phi_{s \to t}^{-1} = \Phi_{t \to s}$.
+\end{lema}
+\begin{proof}
+Mudança de variável para funções absolutamente contínuas; as identidades algébricas de $\Phi_{s \to t}$ decorrem imediatamente da composição de $\varphi$ com a bijeção $\Theta$.
+\end{proof}
+
+\begin{corolario}[Caso linear]\label{cor:3.4}
+Se $f(\theta, x) = r(\theta)x$ com $r \in L^1_{\text{loc}}(\mathbb{R})$, então $\varphi_{\theta_1, \theta_2}(x) = F_\theta(\theta_1, \theta_2)x$, onde
+\[
+F_\theta(\theta_1, \theta_2) = \exp\left(\int_{\theta_1}^{\theta_2} r(\theta)\,d\theta\right) > 0, \qquad F_\theta(\theta_1, \theta_3) = F_\theta(\theta_1, \theta_2) F_\theta(\theta_2, \theta_3), \qquad F_\theta(\theta_1, \theta_2) = \frac{F_\theta(0, \theta_2)}{F_\theta(0, \theta_1)}.
+\]
+No tempo civil, $\Phi_{s \to t}(x) = F(s,t)x$ com $F(s,t) := F_\theta(\Theta(s), \Theta(t)) = F(t_0, t)/F(t_0, s)$. Para cada par $(s,t)$, $x \mapsto F(s,t)x$ é um difeomorfismo linear ($C^\infty$) de $\mathbb{R}$.
+\end{corolario}
+\begin{proof}
+Resolução direta da EDO linear separável sob (H2) e aditividade da integral de Lebesgue.
+\end{proof}
+
+\begin{proposicao}[Compatibilidade com a convenção de base $B$ e platôs]\label{prop:3.5}
+Seja $i_k > -1$ a taxa anual efetiva do dia de acumulação $d_k$. Definindo no espaço $\theta$ a taxa constante por partes $r(\theta) = \ln(1 + i_k)$ para $\theta \in \left(\frac{k-1}{B}, \frac{k}{B}\right]$ (ou, sob $\Theta_\eta$, $r(\theta) = 0$ na imagem dos dias não úteis $(\Theta_\eta(d_{k-1}), \Theta_\eta(d_k - 1)]$ e $r(\theta) = \frac{\ln(1+i_k)/B}{\Theta_\eta(d_k) - \Theta_\eta(d_k - 1)}$ em $(\Theta_\eta(d_k - 1), \Theta_\eta(d_k)]$), tem-se para $j \le k$:
+\[
+F_\theta\left(\frac{j}{B}, \frac{k}{B}\right) = \prod_{m = j+1}^{k} (1 + i_m)^{1/B}, \qquad F(s,t) = \prod_{m = N(t_0, s) + 1}^{N(t_0, t)} (1 + i_m)^{1/B},
+\]
+valendo $F(s,t) = 1$ ($\Phi_{s \to t} = \mathrm{id}_{\mathbb{R}}$) sempre que $N(t_0, s) = N(t_0, t)$.
+\end{proposicao}
+\begin{proof}
+A integral de $r(\theta)$ no $m$-ésimo passo de acumulação vale exatamente $\frac{1}{B}\ln(1 + i_m)$, e nos subintervalos de dias não úteis vale $0$. Somando para $m = j+1, \dots, k$ e aplicando $\exp$, segue o produto.
+\end{proof}
+
+\section{Reprocessamento no BiChronos Engine}\label{sec:4}
+
+Para $a \in \mathbb{R}$, seja $T_a(x) = x + a$ o difeomorfismo afim de translação, com $T_a^{-1} = T_{-a}$ e $T_a \circ T_b = T_{a+b} = T_b \circ T_a$. Fixam-se $\Theta$ e $\Phi_{s \to t}$ sob (H1)--(H2).
+
+\begin{definicao}[Snapshot]\label{def:4.1}
+Dados $\tau, \sigma \in \mathbb{Z}$ ($\tau \ge t_0$), sejam $e_1, \dots, e_m$ os eventos de $E_\sigma$ com $t_v(e) \le \tau$, ordenados por data valor $t_0 < v_1 \le \dots \le v_m \le \tau$, com valores $a_1, \dots, a_m$. O \emph{snapshot} (estado exato) em $\tau$ na versão $\sigma$ é
+\[
+S_\sigma(\tau) = \Phi_{v_m \to \tau} \circ T_{a_m} \circ \Phi_{v_{m-1} \to v_m} \circ \dots \circ T_{a_1} \circ \Phi_{t_0 \to v_1}(x_0),
+\]
+e $S_\sigma(\tau) = \Phi_{t_0 \to \tau}(x_0)$ se $m = 0$. Reprocessar em $\sigma' > \sigma$ é calcular $S_{\sigma'}(\tau)$.
+\end{definicao}
+
+\begin{lema}[Independência da ordem de registro]\label{lem:4.2}
+$S_\sigma(\tau)$ depende de $E_\sigma$ somente através do multiconjunto $\{(t_v(e), a(e)) : e \in E_\sigma,\, t_v(e) \le \tau\}$; em particular, independe de $t_c(e)$ e da ordem de registro, e eventos de mesma data valor podem ser permutados ou somados.
+\end{lema}
+\begin{proof}
+A Definição~\ref{def:4.1} ordena apenas por $t_v$. Se $v_j = v_{j+1}$, então $\Phi_{v_j \to v_{j+1}} = \mathrm{id}_{\mathbb{R}}$ e $T_{a_{j+1}} \circ T_{a_j} = T_{a_{j+1} + a_j} = T_{a_j} \circ T_{a_{j+1}}$.
+\end{proof}
+
+\begin{teorema}[Reprocessamento a partir de ponto de controle]\label{teo:4.3}
+Sejam $\sigma \le \sigma'$ e $N_\tau = \{e \in E_{\sigma'} \setminus E_\sigma : t_v(e) \le \tau\}$. Se $N_\tau = \emptyset$, então $S_{\sigma'}(\tau) = S_\sigma(\tau)$. Caso contrário, seja $v_* = \min_{e \in N_\tau} t_v(e)$ e seja
+\[
+x_* = \Phi_{v_* - 1 \to v_*}(S_\sigma(v_* - 1))
+\]
+o estado em $v_*$ calculado apenas com os eventos de $E_\sigma$ que satisfazem $t_v(e) < v_*$. Então $x_*$ coincide em $\sigma$ e $\sigma'$, e
+\[
+S_{\sigma'}(\tau) = \Gamma_{\sigma'}(x_*), \qquad S_\sigma(\tau) = \Gamma_\sigma(x_*),
+\]
+em que $\Gamma_{\sigma'}$ (resp.\ $\Gamma_\sigma$) é a composição dos fluxos e translações dos eventos de $E_{\sigma'}$ (resp.\ $E_\sigma$) no intervalo $[v_*, \tau]$. Ambas $\Gamma_\sigma$ e $\Gamma_{\sigma'}$ são difeomorfismos globais de classe $C^1$ de $\mathbb{R}$ sobre $\mathbb{R}$.
+\end{teorema}
+\begin{proof}
+Todo $e \in N_\tau$ tem $t_v(e) \ge v_*$; logo $\{e \in E_\sigma : t_v(e) < v_*\} = \{e \in E_{\sigma'} : t_v(e) < v_*\}$ e o estado pré-evento $x_*$ em $v_*$ é idêntico nas duas versões. A fatoração decorre do cociclo (Lema~\ref{lem:3.3}). Como cada $\Phi_{a \to b}$ e cada $T_a$ é difeomorfismo $C^1$ de $\mathbb{R}$ sobre $\mathbb{R}$, suas composições finitas $\Gamma_\sigma$ e $\Gamma_{\sigma'}$ também o são.
+\end{proof}
+
+\begin{observacao}[Custo computacional]\label{obs:4.4}
+O custo do reprocessamento depende exclusivamente do número de dias e eventos na janela ativa $[v_*, \tau]$, lendo-se o histórico anterior a $v_*$ diretamente do ponto de controle persistido.
+\end{observacao}
+
+\begin{corolario}[Superposição no caso linear bruto de impostos]\label{cor:4.5}
+Se $\Phi_{s \to t}(x) = F(s,t)x$ e os eventos $e \in N_\tau$ são translações aditivas (sem liquidação tributada não-linear intermediária, Observação~\ref{obs:1.6}), então
+\[
+S_{\sigma'}(\tau) - S_\sigma(\tau) = \sum_{e \in N_\tau} a(e) F(t_v(e), \tau).
+\]
+Em particular, se um evento $(t_c, v, a)$ foi lançado provisoriamente com data valor $w$ e é corrigido por estorno $(\cdot, w, -a)$ e novo lançamento $(\cdot, v, a)$, o ajuste exato em $\tau \ge \max(v, w)$ é $\Delta(\tau) = a\,[F(v, \tau) - F(w, \tau)]$.
+\end{corolario}
+\begin{proof}
+Por indução com $F(s,u) = F(s,t)F(t,u)$, $\Gamma(x_*) = F(v_*, \tau)x_* + \sum_{v_* \le v_j \le \tau} a_j F(v_j, \tau)$. Na diferença $\Gamma_{\sigma'}(x_*) - \Gamma_\sigma(x_*)$ cancelam-se $F(v_*, \tau)x_*$ e todos os termos de $E_\sigma$.
+\end{proof}
+
+\begin{proposicao}[Reversibilidade: recuperação de estado passado]\label{prop:4.6}
+Sejam $s < \tau$ e $e_1, \dots, e_m$ os eventos de $E_\sigma$ com $s < t_v(e) \le \tau$, ordenados por $v_1 \le \dots \le v_m$. Se não houve extinção de saldo por liquidação total em $(s, \tau]$, o estado em $s$ é recuperável a partir do estado em $\tau$ por:
+\[
+S_\sigma(s) = \Phi_{v_1 \to s} \circ T_{-a_1} \circ \Phi_{v_2 \to v_1} \circ T_{-a_2} \circ \dots \circ T_{-a_m} \circ \Phi_{\tau \to v_m}(S_\sigma(\tau)).
+\]
+\end{proposicao}
+\begin{proof}
+Inversão direta da composição $S_\sigma(\tau) = \Phi_{v_m \to \tau} \circ T_{a_m} \circ \dots \circ T_{a_1} \circ \Phi_{s \to v_1}(S_\sigma(s))$ usando $\Phi_{a \to b}^{-1} = \Phi_{b \to a}$ e $T_a^{-1} = T_{-a}$.
+\end{proof}
+
+\begin{proposicao}[Determinismo e composicionalidade]\label{prop:4.7}
+$S_{\sigma''}(\tau)$ é função pura de $E_{\sigma''}$ e $\tau$. Reprocessar $\sigma \to \sigma' \to \sigma''$ por pontos de controle produz o mesmo resultado que reprocessar diretamente $\sigma \to \sigma''$ ou desde $t_0$, e reprocessar duas vezes sobre a mesma base é idempotente.
+\end{proposicao}
+\begin{proof}
+Decorre da Definição~\ref{def:4.1}, do Lema~\ref{lem:4.2} e do Teorema~\ref{teo:4.3}.
+\end{proof}
+
+\section{Truncamento, arredondamento, decomposição $(P, J)$ e algoritmo}\label{sec:5}
+
+Existem duas fontes distintas de erro numérico: (a) o truncamento dos fatores de capitalização (\S\ref{sec:5.1}) e (b) o arredondamento do saldo em centavos a cada dia (\S\ref{sec:5.2}). A segunda causa a divergência de centavos entre snapshots diários e período fechado; as subseções \S\ref{sec:5.2} a \S\ref{sec:5.6} a quantificam e a eliminam por construção no Algoritmo~\ref{alg:5.13}.
+
+\subsection{Erro de fator truncado}\label{sec:5.1}
+
+\begin{proposicao}[Erro de truncamento de fatores]\label{prop:5.1}
+Sejam $f_1, \dots, f_n \in [1, M]$ e $\tilde{f}_i = \lfloor 10^p f_i \rfloor / 10^p$. Então $1 \le \tilde{f}_i \le f_i$ e
+\[
+0 \le \prod_{i=1}^{n} f_i - \prod_{i=1}^{n} \tilde{f}_i \le n \, 10^{-p} M^{n-1}.
+\]
+\end{proposicao}
+\begin{proof}
+Como $1$ é múltiplo de $10^{-p}$ e $f_i \ge 1$, tem-se $\tilde{f}_i \ge 1$ e $0 \le f_i - \tilde{f}_i < 10^{-p}$. Pela identidade telescópica
+\[
+\prod_{i=1}^{n} f_i - \prod_{i=1}^{n} \tilde{f}_i = \sum_{i=1}^{n} \left(\prod_{j < i} \tilde{f}_j\right) (f_i - \tilde{f}_i) \left(\prod_{j > i} f_j\right),
+\]
+cada produto externo pertence a $[1, M^{i-1}]$ e $[1, M^{n-i}]$, limitando cada uma das $n$ parcelas por $10^{-p} M^{n-1}$.
+\end{proof}
+
+\begin{observacao}[Regime de \emph{accrual} diário vs.\ fator acumulado B3 de 16 casas]\label{obs:5.2}
+No regime de capitalização diária passo a passo (\emph{accrual}), apenas o fator diário divulgado $f_k$ ($p=8$ no DI) é truncado na origem, e o fator acumulado $F(s,t) = \prod_{k=s+1}^t f_k$ satisfaz o cociclo exato $F(s,u) = F(s,t)F(t,u)$ (Invariante~I8). Se o contrato de um título exigir o truncamento adicional da produtória na $16^{\text{a}}$ casa decimal entre eventos ($\tilde{F}_{16}(s,t) = \lfloor 10^{16}\prod f_k\rfloor/10^{16}$, padrão B3 para liquidação de títulos), o ponto de controle $v_*$ deve ser ancorado no último evento de fluxo anterior ($v_r < v_*$). Daqui em diante, modela-se o regime diário exato sobre fatores diários racionais $f_k$ com denominador $10^p$.
+\end{observacao}
+
+\subsection{Arredondamento, decomposição $(P_k, J_k)$ e modalidade de resgate}\label{sec:5.2}
+
+Montantes publicados são inteiros em centavos \cite{Higham2002}.
+
+\begin{definicao}[Operador de arredondamento]\label{def:5.3}
+Um operador de arredondamento é uma função $\rho : \mathbb{R} \to \mathbb{Z}$ não decrescente com $\rho(x + m) = \rho(x) + m$ para todo $m \in \mathbb{Z}$, $\rho(0) = 0$ e $|\rho(x) - x| \le \delta$ ($\delta \in [1/2, 1]$). Casos padrões para $x \ge 0$:
+\begin{itemize}
+    \item \textbf{Truncamento (piso):} $\rho(x) = \lfloor x \rfloor$, $\delta = 1$, $\rho(x) - x \in (-1, 0]$;
+    \item \textbf{Meio-para-cima:} $\rho(x) = \lfloor x + \frac{1}{2} \rfloor$, $\delta = \frac{1}{2}$, $\rho(x) - x \in (-\frac{1}{2}, \frac{1}{2}]$.
+\end{itemize}
+\end{definicao}
+
+\noindent\textbf{Hipótese (H3 — Evolução patrimonial, retiradas e decomposição $(P_k, J_k)$):} No horizonte $k = 1, \dots, n$, os fatores diários satisfazem $f_k \in [1, M]$ (taxas não negativas), o saldo inicial é $x_0 \in \mathbb{Z}_{\ge 0}$ (com $P_0 = x_0$ e $J_0 = 0$), e os fluxos líquidos $a_k \in \mathbb{Z}$ preservam saldos não negativos ($V_k \ge 0$). Para garantir coesão financeira e contábil (COSIF), distinguem-se a natureza do fluxo e a atualização do par Principal-Juros $(P_k, J_k)$ com $V_k = P_k + J_k$:
+\begin{enumerate}[label=(\roman*)]
+    \item \textbf{Antes do fluxo do dia $k$:} O pernoite $k$ eleva o saldo ideal para $V_k^- = f_k V_{k-1}$, mantendo o principal $P_k^- = P_{k-1}$ e acrescendo os juros acumulados para $J_k^- = J_{k-1} + (f_k - 1)V_{k-1} = V_k^- - P_{k-1}$. O saldo publicado disponível antes do fluxo é $S_k^{\text{antes}} = \rho(V_k^-)$.
+    \item \textbf{Aporte ($a_k \ge 0$):} Soma-se integralmente ao principal: $P_k = P_{k-1} + a_k$, $J_k = J_k^-$ e $V_k = f_k V_{k-1} + a_k$.
+    \item \textbf{Retirada parcial ($-S_k^{\text{antes}} < a_k < 0$):} Sob meio-para-cima, exige-se $-a_k \le \lfloor V_k^- \rfloor$ para que $V_k \ge 0$. Conforme a regra contratual do produto, operam-se duas modalidades:
+    \begin{itemize}
+        \item \emph{Modalidade A (Conta remunerada / translação monetária inteira):} $V_k = f_k V_{k-1} + a_k$, abatendo-se primeiro dos juros acumulados ou do principal conforme a convenção contábil da rubrica (ex.: $J_k = \max(0, J_k^- + a_k)$ e $P_k = V_k - J_k$, ou abatimento proporcional $\alpha_k = |a_k|/V_k^-$ entre $P_k$ e $J_k$). Esta é a modalidade padrão para os Invariantes I1 a I20.
+        \item \emph{Modalidade B (Baixa proporcional de títulos/cotas --- \emph{pro-rata}):} Quando o resgate liquida uma fração exata $\alpha_k \in (0, 1)$ da quantidade de títulos/cotas, ambos o principal e os juros (incluindo a fração sub-centavo) sofrem baixa proporcional: $P_k = (1 - \alpha_k)P_{k-1}$, $J_k = (1 - \alpha_k)J_k^-$ e $V_k = (1 - \alpha_k)f_k V_{k-1}$, sendo o valor financeiro bruto liquidado $L_k = \rho(\alpha_k f_k V_{k-1})$.
+    \end{itemize}
+    \item \textbf{Resgate total / Liquidação de posição ($a_k = -S_k^{\text{antes}}$ ou $\alpha_k = 1$):} Extingue-se integralmente a posição e sua fração sub-centavo residual: $P_k := 0$, $J_k := 0$, $V_k := 0$, $\tilde{V}_k := 0$ e $g_k := 0$, impedindo a sobrevivência de ``fração fantasma'' positiva (no truncamento) ou de saldo interno negativo (no meio-para-cima).
+\end{enumerate}
+
+\begin{definicao}[Recursão iterativa legada e saldo ideal]\label{def:5.4}
+Na Modalidade A, a \emph{recursão iterativa} (arredonda a cada dia) é $y_0 = x_0$, $y_k = \rho(f_k y_{k-1}) + a_k$. O \emph{saldo ideal} (sem arredondamento diário) é $V_0 = x_0$, $V_k = f_k V_{k-1} + a_k$.
+\end{definicao}
+
+\begin{proposicao}[Erro da recursão iterativa]\label{prop:5.5}
+Sejam $e_k = y_k - V_k$ e $u_k = \rho(f_k y_{k-1}) - f_k y_{k-1}$. Então
+\[
+e_n = \sum_{k=1}^{n} \left(\prod_{j=k+1}^{n} f_j\right) u_k, \qquad |e_n| \le \delta n M^{n-1}.
+\]
+Se $\rho = \lfloor \cdot \rfloor$, então $-n M^{n-1} < e_n \le 0$: o viés do método iterativo é sempre por falta.
+\end{proposicao}
+\begin{proof}
+$e_k = \rho(f_k y_{k-1}) + a_k - (f_k V_{k-1} + a_k) = u_k + f_k e_{k-1}$ com $e_0 = 0$. Desenrolando a recursão e usando $|u_k| \le \delta$ e $\prod_{j>k} f_j \le M^{n-1}$, segue a cota. No truncamento, $u_k \in (-1, 0]$ implica $e_n \le 0$.
+\end{proof}
+
+\begin{proposicao}[Armadilha sub-centavo]\label{prop:5.6}
+Existem parâmetros sob (H3) para os quais a recursão iterativa jamais acumula rendimento ($y_k = x_0$, $\forall k$), enquanto $V_k$ cresce exponencialmente. Exemplo: $x_0 = 1000$ ($\text{R\$}\,10{,}00$), $f_k = 1{,}0003$, $a_k = 0$, para $\rho = \lfloor \cdot \rfloor$ ou meio-para-cima.
+\end{proposicao}
+\begin{proof}
+$f_1 y_0 = 1000{,}3 \implies \rho(1000{,}3) = 1000 \implies y_k = 1000$ para todo $k$. Já $V_4 = 1000 \times 1{,}0003^4 = 1001{,}20054\dots \implies \rho(V_4) = 1001$.
+\end{proof}
+
+\subsection{Snapshot cumulativo e reconciliação de competência agregada}\label{sec:5.3}
+
+\begin{definicao}[Snapshot cumulativo e movimento individual]\label{def:5.7}
+Dados $x_0, (f_k), (a_k)$ sob (H3), o estado interno é $V_k = P_k + J_k$. O snapshot individual publicado é $S_k = \rho(V_k) \in \mathbb{Z}$, o principal publicado é $P_k \in \mathbb{Z}$, o juro acumulado publicado é $J_{k,\text{pub}} = S_k - P_k \in \mathbb{Z}$, e o movimento diário individual publicado é $D_k = S_k - S_{k-1} - a_k \in \mathbb{Z}$.
+\end{definicao}
+
+\begin{teorema}[Consistência de fechamento]\label{teo:5.8}
+Sob (H3):
+\begin{enumerate}[label=(\roman*)]
+    \item $|S_k - V_k| \le \delta$ para todo $k \ge 0$, independentemente de $k$.
+    \item Independência de caminho: $S_k$ depende apenas de $(x_0, f_1, \dots, f_k, a_1, \dots, a_k)$.
+    \item Fechamento contábil individual exato: $\sum_{k=1}^{n} D_k = S_n - x_0 - \sum_{k=1}^{n} a_k$, e $S_n = P_n + J_{n,\text{pub}}$ com $J_{n,\text{pub}} = \sum_{k=1}^n D_k$.
+    \item $|S_n - y_n| \le \delta(1 + n M^{n-1})$. Se $\rho = \lfloor \cdot \rfloor$, vale $y_n \le S_n \le V_n$ e $0 \le S_n - y_n \le \lfloor n M^{n-1} \rfloor$.
+\end{enumerate}
+\end{teorema}
+\begin{proof}
+(i) Definição~\ref{def:5.3}. (ii) $V_k$ é função determinística das entradas até $k$. (iii) Telescopagem de $D_k = S_k - S_{k-1} - a_k$ com $S_0 = x_0 = P_0$ e $P_n = x_0 + \sum_{k=1}^n a_k$. (iv) Desigualdade triangular $|S_n - y_n| \le |S_n - V_n| + |V_n - y_n| \le \delta + \delta n M^{n-1}$ e monotonia de $\lfloor \cdot \rfloor$.
+\end{proof}
+
+\begin{observacao}[Partidas dobradas e reconciliação de competência agregada no Razão Geral --- COSIF]\label{obs:5.8b}
+Em uma carteira com $M_{\text{cli}}$ contas individuais $i \in \{1, \dots, M_{\text{cli}}\}$, o saldo individual publicado $S_k^{(i)} = \rho(V_k^{(i)})$ governa o extrato e o direito de liquidação de cada cliente, mas a soma dos arredondamentos individuais $\sum_{i=1}^{M_{\text{cli}}} S_k^{(i)}$ difere do passivo econômico total por competência $\rho\big(\sum_{i=1}^{M_{\text{cli}}} V_k^{(i)}\big)$ em até $M_{\text{cli}}\delta$ centavos (por exemplo, se $100.000$ contas acumulam $0{,}4$ centavo de juro no dia 1 sob truncamento, $D_1^{(i)} = 0$ para cada cliente, mas a despesa total incorrida pela instituição é de $\text{R\$}\,400{,}00$). Para assegurar partidas dobradas exatas entre o Sub-Razão de Clientes e o Razão Geral (GL / COSIF) sob o regime de competência (N1/N2), o BiChronos Engine mantém no fechamento diário do balancete a rubrica transitória de \textbf{Provisão de Frações Sub-Centavo de Competência}:
+\[
+R_k^{\text{GL}} = \rho\left(\sum_{i=1}^{M_{\text{cli}}} V_k^{(i)}\right) - \sum_{i=1}^{M_{\text{cli}}} S_k^{(i)} \in \mathbb{Z}.
+\]
+Assim, o passivo contábil total escriturado no Balancete ($\sum_i S_k^{(i)} + R_k^{\text{GL}}$) reflete com exatidão de centavos a taxa efetiva agregada da carteira $\rho(\sum_i V_k^{(i)})$, enquanto cada conta individual fecha exatamente com $S_k^{(i)}$.
+\end{observacao}
+
+\begin{proposicao}[Movimento diário não negativo]\label{prop:5.9}
+Sob (H3, Modalidade A), $D_k = \rho(f_k V_{k-1}) - \rho(V_{k-1}) \ge 0$ para todo $k \ge 1$, independentemente dos fluxos inteiros $a_k$.
+\end{proposicao}
+\begin{proof}
+Como $a_k \in \mathbb{Z}$, $\rho(f_k V_{k-1} + a_k) = \rho(f_k V_{k-1}) + a_k$, cancelando $a_k$ em $D_k$. Como $f_k \ge 1$ e $V_{k-1} \ge 0$, $f_k V_{k-1} \ge V_{k-1}$ e $\rho$ é não decrescente.
+\end{proof}
+
+\begin{proposicao}[Ponto de controle em $V$ vs.\ em $S$]\label{prop:5.10}
+Sejam $0 < k_* < n$ e $n' = n - k_*$. (a) Reprocessar a partir de $V_{k_*}$ reproduz exatamente $V_k$ e $S_k$ para todo $k > k_*$. (b) Reprocessar a partir do saldo arredondado $S_{k_*}$ gera erro de até $\delta(1 + M^{n'} + n' M^{n'-1})$ (com arredondamento diário subsequente) ou de até $\lfloor 2\delta + \delta M^{n'} \rfloor \le \delta(2 + M^{n'})$ (sem arredondamento diário subsequente), violando a reprodutibilidade.
+\end{proposicao}
+\begin{proof}
+(a) Decorre do Teorema~\ref{teo:5.8}(ii). (b) A perturbação inicial $|S_{k_*} - V_{k_*}| \le \delta$ é amplificada por $\prod_{j=k_*+1}^n f_j \le M^{n'}$; somam-se os erros subsequentes pela desigualdade triangular.
+\end{proof}
+
+\begin{observacao}\label{obs:5.11}
+O ponto de controle do Teorema~\ref{teo:4.3} deve armazenar obrigatoriamente o estado de alta precisão ($V_{k_*}$ ou $(\tilde{V}_{k_*}, g_{k_*})$), e nunca apenas o saldo publicado $S_{k_*}$.
+\end{observacao}
+
+\subsection{Precisão interna e banda de guarda}\label{sec:5.4}
+
+Para evitar o crescimento de denominadores $10^{pk}$ na aritmética racional ao longo de $k$ dias, propaga-se $\tilde{V}_k$ em ponto fixo com $q$ casas além do centavo e certifica-se a decisão de arredondamento por banda de guarda (estratégia de Ziv \cite{Ziv1991, Muller2018}).
+
+\begin{proposicao}[Banda de guarda]\label{prop:5.12}
+Sejam $\tilde{V}_0 = x_0$, $g_0 = 0$ e, para $k \ge 1$,
+\[
+\tilde{V}_k = \frac{\lfloor 10^q f_k \tilde{V}_{k-1} \rfloor}{10^q} + a_k, \qquad g_k = f_k g_{k-1} + 10^{-q}.
+\]
+Então $0 \le V_k - \tilde{V}_k \le g_k \le k M^{k-1} 10^{-q}$. Em consequência, se $\rho(\tilde{V}_k) = \rho(\tilde{V}_k + g_k)$, então $S_k = \rho(V_k) = \rho(\tilde{V}_k)$ exatamente.
+\end{proposicao}
+\begin{proof}
+O erro $\epsilon_k = V_k - \tilde{V}_k$ satisfaz $\epsilon_k = f_k \epsilon_{k-1} + w_k$ com $w_k \in [0, 10^{-q})$, donde $0 \le \epsilon_k \le g_k$ por indução. Como $\tilde{V}_k \le V_k \le \tilde{V}_k + g_k$ e $\rho$ é não decrescente, a igualdade $\rho(\tilde{V}_k) = \rho(\tilde{V}_k + g_k)$ fixa $\rho(V_k)$.
+\end{proof}
+
+Para $n = 21$ e $q = 12$, tem-se $g_{21} < 2{,}2 \times 10^{-11}$ centavo; apenas se $[\tilde{V}_k, \tilde{V}_k + g_k]$ contiver um limiar de salto de $\rho$ aciona-se a avaliação racional exata de $V_k$ desde a âncora.
+
+\subsection{Divergência quantificada}\label{sec:5.5}
+
+A Tabela~\ref{tab:2} quantifica a divergência $d = S_n - y_n$ em simulação de Monte Carlo.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{@{}llcccc@{}}
+\toprule
+\textbf{Saldo inicial $x_0$} & \textbf{Regra $\rho$ (legado)} & $\mathbb{P}(d \neq 0)$ & \textbf{Média de $d$} & $\max |d|$ & \textbf{Cota teórica} \\
+\midrule
+$\text{R\$}\,1.000$ a $\text{R\$}\,10^7$ & truncamento    & $99{,}99\%$ & $+10{,}04$ & $19$ & $21{,}7$ \\
+                                         & meio-para-cima & $58{,}2\%$  & $+0{,}02$  & $10$ & $11{,}3$ \\
+\midrule
+$\text{R\$}\,10$ a $\text{R\$}\,1.000$   & truncamento    & $98{,}1\%$  & $+10{,}38$ & $21$ & $21{,}7$ \\
+                                         & meio-para-cima & $94{,}9\%$  & $-0{,}30$  & $11$ & $11{,}3$ \\
+\bottomrule
+\end{tabular}
+\caption{$n = 21$ dias úteis; DI constante sorteado em $[8\%, 16\%]$ a.a.; fator diário truncado em 8 casas; 20.000 casos por linha (\texttt{snapshot\_cumulativo.py}, semente 7). Cota teórica: $\delta(1 + n M^{n-1})$ com $M = 1{,}5^{1/252}$. Com $q = 12$, a banda de guarda não precisou acionar o \emph{fallback} racional nenhuma vez.}
+\label{tab:2}
+\end{table}
+
+\subsection{Algoritmo de reprocessamento do BiChronos Engine}\label{sec:5.6}
+
+\begin{algoritmo}[BiChronos Engine: Reprocessamento com âncora fechada, decomposição $(P, J)$ e banda de guarda]\label{alg:5.13}
+\textbf{Entrada:} Âncora de período fechado no índice $k_a$ (data $a = d_{k_a}$) com estado $(P_{k_a}, V_{k_a})$; base $E_{\sigma'}$; convenção $(N, B)$ com $B \in \{252, 360, 365\}$; fatores diários $f_k$ truncados em $p$ casas; operador $\rho$; precisão $q \ge 0$. \textbf{Estado persistido por dia $k$:} $(P_k, \tilde{V}_k, g_k, S_k, D_k)$.
+\begin{enumerate}[label=\textbf{\arabic*.}]
+    \item \textbf{Ponto de controle.} Pelo Teorema~\ref{teo:4.3}, determinar $v_* = \min_{e \in N_\tau} t_v(e)$ e $k_* = N(t_0, v_*)$. Se $v_* \le a$ (evento retroativo atingindo período contábil fechado), não mutar o período fechado: ir ao Passo~6. Caso contrário, carregar $(P_{k_* - 1}, \tilde{V}_{k_* - 1}, g_{k_* - 1}, S_{k_* - 1})$ da versão $\sigma$.
+    \item \textbf{Propagação determinística e decomposição $(P_k, J_k)$.} Para cada $k = k_*, \dots, N(t_0, \tau)$:
+    \begin{itemize}
+        \item Se ocorrer resgate total ($a_k = -\rho(f_k \tilde{V}_{k-1})$), extinguir a posição e sua fração: $P_k = 0$, $\tilde{V}_k = 0$, $g_k = 0$ (Hipótese~H3(iv)).
+        \item Se ocorrer baixa parcial proporcional de fração $\alpha_k \in (0, 1)$ (Modalidade B), atualizar $P_k = (1 - \alpha_k)P_{k-1}$, $\tilde{V}_k = \lfloor 10^q (1 - \alpha_k) f_k \tilde{V}_{k-1} \rfloor / 10^q$ e $g_k = (1 - \alpha_k)f_k g_{k-1} + 10^{-q}$.
+        \item Caso contrário (Modalidade A padrão, $a_k \in \mathbb{Z}$): atualizar o principal $P_k = P_{k-1} + a_k$ (ou abater de $J$ conforme rubrica) e propagar
+        \[
+        \tilde{V}_k = \frac{\lfloor 10^q f_k \tilde{V}_{k-1} \rfloor}{10^q} + a_k, \qquad g_k = f_k g_{k-1} + 10^{-q}.
+        \]
+    \end{itemize}
+    \item \textbf{Publicação certificada.} Se $\rho(\tilde{V}_k) = \rho(\tilde{V}_k + g_k)$, definir $S_k = \rho(\tilde{V}_k)$ (Proposição~\ref{prop:5.12}); senão, avaliar $V_k$ em racional exato desde a âncora apenas para decidir $S_k = \rho(V_k)$, mantendo inalterado o par $(\tilde{V}_k, g_k)$ (garantindo determinismo independente de $k_*$). O juro acumulado publicado da conta é $J_{k,\text{pub}} = S_k - P_k$.
+    \item \textbf{Movimento, versão e Razão Geral.} Calcular $D_k = S_k - S_{k-1} - a_k$. Gravar $(P_k, S_k, D_k, \tilde{V}_k, g_k)$ na versão $\sigma'$, preservando a versão $\sigma$. No fechamento do balancete da carteira, atualizar a provisão agregada de competência $R_k^{\text{GL}} = \rho(\sum_i V_k^{(i)}) - \sum_i S_k^{(i)}$ (Observação~\ref{obs:5.8b}).
+    \item \textbf{Fechamento e conciliação com legado.} Dado o saldo fechado registrado $X_{\text{fech}} \in \mathbb{Z}$, calcular $r = X_{\text{fech}} - S_n$. Se $r = 0$, manter $V_n$ (se política retém fração) ou reancorar $V_n^{\text{novo}} := S_n$ e $g_n^{\text{novo}} := 0$ (se política zera fração). Se $r \neq 0$ (oriundo de legado iterativo): se $|r| > \delta(1 + n M^{n-1})$, disparar alerta de erro de dados; se dentro da cota, registrar o evento auditável de conciliação $(t_{\text{fech}}, t_{\text{fech}}, r)$ na exibição e reancorar o novo período diretamente no inteiro $V_n^{\text{novo}} := X_{\text{fech}}$ com $g_n^{\text{novo}} := 0$.
+    \item \textbf{Evento retroativo sobre período fechado ($v_* \le a$, segregação inteira exata sob não-aditividade de $\rho$).} Quando $v_* \le a$ e o balancete até $a$ permanece fechado:
+    \begin{enumerate}[label=(\alph*)]
+        \item Calcular em $a$ a variação exata de principal e de juros ideais (Corolário~\ref{cor:4.5}):
+        \[
+        \Delta P = \sum_{e \in N_a} a(e) \in \mathbb{Z}, \qquad \Delta J_{\text{ideal}} = \sum_{e \in N_a} a(e)\big(F(t_v(e), a) - 1\big), \qquad \Delta V(a) = \Delta P + \Delta J_{\text{ideal}}.
+        \]
+        \item Como o operador de arredondamento $\rho$ \textbf{não é aditivo} sobre reais ($\rho(V_a^\sigma + \Delta V(a))$ pode diferir de $\rho(V_a^\sigma) + \Delta P + \rho(\Delta J_{\text{ideal}})$ em $1$ centavo quando as partes fracionárias de $V_a^\sigma$ e de $\Delta J_{\text{ideal}}$ somam $\ge 1$, como ocorre na Tabela~\ref{tab:7}), atualizar o estado ideal na âncora para $V_a^{\sigma'} = V_a^\sigma + \Delta V(a)$, obter o novo saldo publicado $S_{\sigma'}(a) = \rho(V_a^{\sigma'})$ e definir o lançamento contábil inteiro de ajuste de juros por \textbf{diferença inteira exata}:
+        \[
+        \Delta J_{\text{pub}}(a) := \big(S_{\sigma'}(a) - S_\sigma(a)\big) - \Delta P \in \mathbb{Z}.
+        \]
+        \item Lançar contabilmente em $t_c = \sigma'$ (com efeito na abertura $a^+$ do período ativo e histórico referenciando $t_v(e)$) a parcela patrimonial $\Delta P$ e a parcela de competência de juros $\Delta J_{\text{pub}}(a)$ (garantindo a identidade exata $S_\sigma(a) + \Delta P + \Delta J_{\text{pub}}(a) = S_{\sigma'}(a)$ sem perda de centavo), e executar os Passos~2 a 4 de $k_a + 1$ até $N(t_0, \tau)$ partindo de $V_a^{\sigma'}$.
+    \end{enumerate}
+\end{enumerate}
+\end{algoritmo}
+
+\begin{proposicao}[Correção do Algoritmo~\ref{alg:5.13}]\label{prop:5.14}
+Para todo $k \ge k_*$, o $S_k$ publicado pelo Algoritmo~\ref{alg:5.13} coincide com o snapshot cumulativo $\rho(V_k)$ da Definição~\ref{def:5.7} calculado desde a âncora, qualquer que seja $k_*$ e para todo $q \ge 0$. Valem o fechamento exato (Teorema~\ref{teo:5.8}(iii)), a decomposição inteira exata $S_{\sigma'}(a) - S_\sigma(a) = \Delta P + \Delta J_{\text{pub}}(a)$ no Passo~6, e $D_k \ge 0$ (Proposição~\ref{prop:5.9}).
+\end{proposicao}
+\begin{proof}
+O Passo~3 reproduz $\rho(V_k)$ exatamente (Proposição~\ref{prop:5.12}) e não altera $(\tilde{V}_k, g_k)$, preservando o determinismo desde $k_* - 1$ (Proposição~\ref{prop:5.10}(a)). A igualdade $S_\sigma(a) + \Delta P + \Delta J_{\text{pub}}(a) = S_{\sigma'}(a)$ no Passo~6(b) é algébrica por definição de $\Delta J_{\text{pub}}(a)$.
+\end{proof}
+
+\section{Conjunto de 20 invariantes formais}\label{sec:6}
+
+Apresentam-se os 20 invariantes do BiChronos Engine com suas condições prévias, condições posteriores, algoritmo de verificação e base teórica.
+
+\subsection{Eventos e versões}
+
+\begin{itemize}
+    \item \textbf{I1 (Anexação apenas / \emph{Append-only}).}
+    \begin{itemize}
+        \item \emph{Condições prévias:} Base $E_\sigma$ em $\sigma \in \mathbb{Z}$ e lote de novos eventos/estornos $L_{\sigma'}$ com $\sigma < t_c(e) \le \sigma'$ e $t_v(e) > t_0$.
+        \item \emph{Condições posteriores:} $E_{\sigma'} = E_\sigma \sqcup L_{\sigma'}$, $E_\sigma \subseteq E_{\sigma'}$, e preservação imutável de todos os elementos de $E_\sigma$.
+        \item \emph{Algoritmo (\texttt{Alg-I1}):} Inserir registros em modo \emph{append-only} (estorno de $(t_c^0, v, a)$ gera $(\sigma', v, -a)$); verificar por comparação de \emph{hash} de $E_\sigma$ em $O(\#E_\sigma)$.
+        \item \emph{Base:} Definição~\ref{def:1.1}.
+    \end{itemize}
+
+    \item \textbf{I2 (Imutabilidade e reprodutibilidade de versão).}
+    \begin{itemize}
+        \item \emph{Condições prévias:} Versão $\sigma$ gravada com $(P^\sigma, V^\sigma, S^\sigma, D^\sigma, \tilde{V}^\sigma, g^\sigma)$ e novo reprocessamento em $\sigma' > \sigma$.
+        \item \emph{Condições posteriores:} A versão $\sigma$ não é alterada e o recálculo sobre $\mathcal{D}_\sigma = (x_0, (f_k), E_\sigma)$ reproduz bit a bit a mesma série.
+        \item \emph{Algoritmo (\texttt{Alg-I2}):} Gravar versões sob chave imutável $(\text{conta}, \sigma', k)$; em auditoria ($O(n)$), reexecutar o Algoritmo~\ref{alg:5.13} sobre $E_\sigma$ e assertar igualdade exata.
+        \item \emph{Base:} Proposição~\ref{prop:4.7} e Passos~3 e 4 do Algoritmo~\ref{alg:5.13}.
+    \end{itemize}
+
+    \item \textbf{I3 (Localidade temporal).}
+    \begin{itemize}
+        \item \emph{Condições prévias:} $E_\sigma \subseteq E_{\sigma'}$ tal que todo $e \in E_{\sigma'} \setminus E_\sigma$ satisfaz $t_v(e) > \tau$.
+        \item \emph{Condições posteriores:} Para todo $k \le N(t_0, \tau)$, $(P_k^{\sigma'}, V_k^{\sigma'}, S_k^{\sigma'}, D_k^{\sigma'}) = (P_k^\sigma, V_k^\sigma, S_k^\sigma, D_k^\sigma)$.
+        \item \emph{Algoritmo (\texttt{Alg-I3}):} Determinar $v_* = \min_{E_{\sigma'}\setminus E_\sigma} t_v(e)$ e $k_* = N(t_0, v_*)$; preservar sem recálculo os índices $k < k_*$ e assertar diferença nula em $O(k_*)$.
+        \item \emph{Base:} Proposição~\ref{prop:1.4} e Teorema~\ref{teo:4.3}.
+    \end{itemize}
+
+    \item \textbf{I4 (Independência da ordem de registro).}
+    \begin{itemize}
+        \item \emph{Condições prévias:} Duas bases $E^{(1)}, E^{(2)}$ com mesmo multiconjunto projetado $\{(t_v(e), a(e)) : e \in E_\sigma, t_v(e) \le \tau\}$.
+        \item \emph{Condições posteriores:} $(V_k^{(1)}, S_k^{(1)}, D_k^{(1)}) = (V_k^{(2)}, S_k^{(2)}, D_k^{(2)})$ para todo $k \le N(t_0, \tau)$, coincidindo com a Definição~\ref{def:4.1}.
+        \item \emph{Algoritmo (\texttt{Alg-I4}):} Ordenar e agregar eventos apenas por $t_v(e)$; em teste ($O(n)$), permutar aleatoriamente a ordem de registro e assertar igualdade entre composição funcional e recursão diária.
+        \item \emph{Base:} Lema~\ref{lem:4.2} e Invariante~I8.
+    \end{itemize}
+
+    \item \textbf{I5 (Aditividade de eventos simultâneos).}
+    \begin{itemize}
+        \item \emph{Condições prévias:} Eventos $(t_{c,1}, v, a)$ e $(t_{c,2}, v, b)$ de mesma data valor $v$ na Modalidade A.
+        \item \emph{Condições posteriores:} Equivalência exata de $(V_k, S_k, D_k)$ com um único evento $(\max(t_{c,1}, t_{c,2}), v, a + b)$.
+        \item \emph{Algoritmo (\texttt{Alg-I5}):} Somar $a_k = \sum_{N(t_0, t_v(e))=k} a(e)$ antes de aplicar $T_{a_k}$; assertar $T_a(T_b(x)) = T_{a+b}(x)$.
+        \item \emph{Base:} $T_a \circ T_b = T_{a+b}$.
+    \end{itemize}
+
+    \item \textbf{I6 (Estorno neutro).}
+    \begin{itemize}
+        \item \emph{Condições prévias:} Base $E_{\sigma'} = E_\sigma \cup \{(t_{c,1}, v, a), (t_{c,2}, v, -a)\}$ na Modalidade A.
+        \item \emph{Condições posteriores:} $(P_k^{\sigma'}, V_k^{\sigma'}, S_k^{\sigma'}, D_k^{\sigma'}) = (P_k^\sigma, V_k^\sigma, S_k^\sigma, D_k^\sigma)$ para todo $k \ge 0$.
+        \item \emph{Algoritmo (\texttt{Alg-I6}):} Inserir par evento/estorno em $v$, reprocessar a partir de $v$ e assertar invariância de $(V, S, D)$ em $O(n - k_*)$.
+        \item \emph{Base:} Invariante~I5 com $a + (-a) = 0$ e $T_{-a} \circ T_a = \mathrm{id}_{\mathbb{R}}$.
+    \end{itemize}
+\end{itemize}
+
+\subsection{Tempo e fluxo}
+
+\begin{itemize}
+    \item \textbf{I7 (Identidade).}
+    \begin{itemize}
+        \item \emph{Condições prévias:} Datas $s, t \in \mathbb{Z}$ com $N(t_0, s) = N(t_0, t)$ (mesma data ou mesmo platô de dias não úteis).
+        \item \emph{Condições posteriores:} $N(s,t) = 0$, $F(s,t) = 1$ e $\Phi_{s \to t} = \mathrm{id}_{\mathbb{R}}$.
+        \item \emph{Algoritmo (\texttt{Alg-I7}):} Se $g(t) - g(s) = 0$, retornar $F \leftarrow 1$ e manter o estado inalterado em $O(1)$.
+        \item \emph{Base:} Lema~\ref{lem:2.1}, Lema~\ref{lem:3.1} e Proposição~\ref{prop:3.5}.
+    \end{itemize}
+
+    \item \textbf{I8 (Cociclo exato).}
+    \begin{itemize}
+        \item \emph{Condições prévias:} Datas $s \le t \le u$ e fatores diários racionais $f_k \in \mathbb{Q}_{>0}$ sob regime de capitalização diária (Observação~\ref{obs:5.2}).
+        \item \emph{Condições posteriores:} $F(s,u) = F(s,t)F(t,u)$ exatamente em $\mathbb{Q}$ e $\Phi_{t \to u} \circ \Phi_{s \to t} = \Phi_{s \to u}$.
+        \item \emph{Algoritmo (\texttt{Alg-I8}):} Computar $F(s,t) = \prod_{k=N(t_0,s)+1}^{N(t_0,t)} f_k$ sem truncamento intermediário; assertar $F(s,u) - F(s,t)F(t,u) = 0$ em $\mathbb{Q}$.
+        \item \emph{Base:} Lema~\ref{lem:3.3}, Corolário~\ref{cor:3.4} e Observação~\ref{obs:5.2}.
+    \end{itemize}
+
+    \item \textbf{I9 (Invertibilidade).}
+    \begin{itemize}
+        \item \emph{Condições prévias:} Estado $V_\tau$ em $\tau \ge s \ge t_0$, fatores $f_k > 0$ e eventos em $(s, \tau]$ na Modalidade A (sem zeramento por resgate total no intervalo).
+        \item \emph{Condições posteriores:} A fórmula inversa da Proposição~\ref{prop:4.6} recupera exatamente $V_s$ (e $x_0$ para $s = t_0$).
+        \item \emph{Algoritmo (\texttt{Alg-I9}):} Partindo de $z \leftarrow V_\tau \in \mathbb{Q}$, dividir pelos fatores $F(v_j, v_{j+1})$ e subtrair $a_j$ em ordem reversa; assertar $z = V_s$ em $O(n)$.
+        \item \emph{Base:} Teorema~\ref{teo:3.2} e Proposição~\ref{prop:4.6}.
+    \end{itemize}
+
+    \item \textbf{I10 (Monotonia).}
+    \begin{itemize}
+        \item \emph{Condições prévias:} Duas instâncias com $x_0 \le x_0'$ e $a_k \le a_k'$ ($\forall k$), mesmos fatores $f_k \ge 1$ e mesmo $\rho$.
+        \item \emph{Condições posteriores:} $V_k \le V_k'$, $\tilde{V}_k \le \tilde{V}_k'$ e $S_k \le S_k'$ para todo $k \ge 0$.
+        \item \emph{Algoritmo (\texttt{Alg-I10}):} Propagar ambas as séries e assertar $V_k \le V_k'$ e $S_k \le S_k'$ em cada dia $k$ ($O(n)$).
+        \item \emph{Base:} $F(s,t) > 0$ e monotonia de $\rho$ (Definição~\ref{def:5.3}).
+    \end{itemize}
+
+    \item \textbf{I11 (Linearidade de $V$).}
+    \begin{itemize}
+        \item \emph{Condições prévias:} Saldos iniciais $x_0, x_0'$, vetores de fluxos $a, a'$ na Modalidade A (brutos de impostos, Observação~\ref{obs:1.6}) e escalares $\alpha, \beta \in \mathbb{R}$.
+        \item \emph{Condições posteriores:} $V_k(\alpha x_0 + \beta x_0', \alpha a + \beta a') = \alpha V_k(x_0, a) + \beta V_k(x_0', a')$ para todo $k \ge 0$.
+        \item \emph{Algoritmo (\texttt{Alg-I11}):} Avaliar $V_k(x_0, a)$ e $V_k(x_0, 0) + V_k(0, a)$ em $\mathbb{Q}$ e assertar igualdade exata em $O(n)$.
+        \item \emph{Base:} Corolário~\ref{cor:4.5}.
+    \end{itemize}
+\end{itemize}
+
+\subsection{Snapshot publicado}
+
+\begin{itemize}
+    \item \textbf{I12 (Publicação inteira e uniformemente limitada).}
+    \begin{itemize}
+        \item \emph{Condições prévias:} Estado $V_k \in \mathbb{R}$ e operador $\rho$ com cota $\delta \in [1/2, 1]$.
+        \item \emph{Condições posteriores:} $S_k \in \mathbb{Z}$ e $|S_k - V_k| \le \delta$ para todo $k \ge 0$.
+        \item \emph{Algoritmo (\texttt{Alg-I12}):} Assertiva em tempo de execução ($O(1)$): verificar $S_k \in \mathbb{Z}$ e $\tilde{V}_k - \delta \le S_k \le \tilde{V}_k + g_k + \delta$.
+        \item \emph{Base:} Teorema~\ref{teo:5.8}(i).
+    \end{itemize}
+
+    \item \textbf{I13 (Invariância do rendimento sob fluxos inteiros).}
+    \begin{itemize}
+        \item \emph{Condições prévias:} Estado $V_{k-1} \ge 0$, fator $f_k \ge 1$ e fluxo inteiro $a_k \in \mathbb{Z}$ na Modalidade A (sem resgate total).
+        \item \emph{Condições posteriores:} $D_k = \rho(f_k V_{k-1}) - \rho(V_{k-1})$, independentemente de $a_k$.
+        \item \emph{Algoritmo (\texttt{Alg-I13}):} Calcular $S_k^{\text{antes}} = \rho(f_k V_{k-1})$, $S_k = S_k^{\text{antes}} + a_k$ e assertar em $O(1)$ que $D_k = S_k^{\text{antes}} - S_{k-1}$.
+        \item \emph{Base:} Definição~\ref{def:5.3} e Proposição~\ref{prop:5.9}.
+    \end{itemize}
+
+    \item \textbf{I14 (Não negatividade do movimento).}
+    \begin{itemize}
+        \item \emph{Condições prévias:} Hipótese (H3) com $f_k \ge 1$ e $V_{k-1} \ge 0$.
+        \item \emph{Condições posteriores:} $D_k \ge 0$ para todo $k \ge 1$.
+        \item \emph{Algoritmo (\texttt{Alg-I14}):} Assertar $D_k \ge 0$ em cada passo do Passo~4 do Algoritmo~\ref{alg:5.13} ($O(1)$).
+        \item \emph{Base:} Proposição~\ref{prop:5.9}.
+    \end{itemize}
+
+    \item \textbf{I15 (Conservação contábil em subintervalos).}
+    \begin{itemize}
+        \item \emph{Condições prévias:} Séries $(S_k), (D_k), (a_k)$ geradas pelo Algoritmo~\ref{alg:5.13} e índices $0 \le j \le k \le n$.
+        \item \emph{Condições posteriores:} $\sum_{i=j+1}^k D_i = S_k - S_j - \sum_{i=j+1}^k a_i$ (e $S_k = P_k + J_{k,\text{pub}}$).
+        \item \emph{Algoritmo (\texttt{Alg-I15}):} Acumular somas inteiras de $D_i$ e $a_i$ e assertar $(S_k - S_j) - (\Sigma_D + \Sigma_a) = 0$ em $O(k - j)$.
+        \item \emph{Base:} Teorema~\ref{teo:5.8}(iii).
+    \end{itemize}
+
+    \item \textbf{I16 (Dominância sob truncamento).}
+    \begin{itemize}
+        \item \emph{Condições prévias:} Hipótese (H3) e operador $\rho(x) = \lfloor x \rfloor$ ($\delta = 1$).
+        \item \emph{Condições posteriores:} $y_n \le S_n \le V_n$ e $0 \le S_n - y_n \le \lfloor n M^{n-1} \rfloor$.
+        \item \emph{Algoritmo (\texttt{Alg-I16}):} Executar $y_k$ e $S_k$ e assertar $0 \le S_k - y_k \le \lfloor k M^{k-1} \rfloor$ para todo $k$ ($O(n)$).
+        \item \emph{Base:} Teorema~\ref{teo:5.8}(iv).
+    \end{itemize}
+
+    \item \textbf{I17 (Fidelidade do ponto de controle em $V$).}
+    \begin{itemize}
+        \item \emph{Condições prévias:} Estado $(\tilde{V}_{k_* - 1}, g_{k_* - 1}, S_{k_* - 1})$ persistido em $k_* - 1$.
+        \item \emph{Condições posteriores:} Reprocessar de $k_*$ a $n$ reproduz exatamente $(V_k, S_k, D_k, \tilde{V}_k, g_k)$ do cálculo desde a âncora.
+        \item \emph{Algoritmo (\texttt{Alg-I17}):} Carregar $(\tilde{V}_{k_* - 1}, g_{k_* - 1})$ no Passo~1; em auditoria ($O(n)$), comparar com recálculo desde $k=0$.
+        \item \emph{Base:} Proposição~\ref{prop:5.10}(a) e Passo~3 do Algoritmo~\ref{alg:5.13}.
+    \end{itemize}
+
+    \item \textbf{I18 (Composicionalidade do reprocessamento).}
+    \begin{itemize}
+        \item \emph{Condições prévias:} Três versões $\sigma_1 \le \sigma_2 \le \sigma_3$ com $E_{\sigma_1} \subseteq E_{\sigma_2} \subseteq E_{\sigma_3}$.
+        \item \emph{Condições posteriores:} Reprocessar $\sigma_1 \to \sigma_2 \to \sigma_3$ por pontos de controle, reprocessar $\sigma_1 \to \sigma_3$ diretamente e calcular $E_{\sigma_3}$ desde a âncora produzem exatamente o mesmo $(P, V, S, D, \tilde{V}, g)$.
+        \item \emph{Algoritmo (\texttt{Alg-I18}):} Executar os três caminhos em auditoria/teste ($O(n)$) e assertar igualdade termo a termo.
+        \item \emph{Base:} Teorema~\ref{teo:4.3}, Proposição~\ref{prop:4.7} e Invariante~I17.
+    \end{itemize}
+
+    \item \textbf{I19 (Exatidão da banda de guarda).}
+    \begin{itemize}
+        \item \emph{Condições prévias:} Precisão $q \ge 0$, $(\tilde{V}_k, g_k)$ do Passo~2 e estado exato $V_k \in \mathbb{Q}$.
+        \item \emph{Condições posteriores:} $0 \le V_k - \tilde{V}_k \le g_k$ e o $S_k$ do Passo~3 iguala $\rho(V_k)$ para todo $q \ge 0$.
+        \item \emph{Algoritmo (\texttt{Alg-I19}):} Verificar $\rho(\tilde{V}_k) = \rho(\tilde{V}_k + g_k)$ em $O(1)$ e acionar recálculo racional quando falso.
+        \item \emph{Base:} Proposição~\ref{prop:5.12} e Proposição~\ref{prop:5.14}.
+    \end{itemize}
+
+    \item \textbf{I20 (Resíduo de fechamento e segregação inteira exata).}
+    \begin{itemize}
+        \item \emph{Condições prévias:} Fechamento $X_{\text{fech}} \in \mathbb{Z}$ e snapshot $S_n = \rho(V_n)$ (Passo~5), ou ajuste de período fechado em $a$ (Passo~6).
+        \item \emph{Condições posteriores:} (i) $r = X_{\text{fech}} - S_n = 0$ se $X_{\text{fech}} = \rho(V_n)$, e $|r| \le \delta(1 + n M^{n-1})$ se $X_{\text{fech}} = y_n$; (ii) no Passo~6, $\Delta P + \Delta J_{\text{pub}}(a) = S_{\sigma'}(a) - S_\sigma(a)$ fecha exatamente em centavos sem erro de não-aditividade de $\rho$.
+        \item \emph{Algoritmo (\texttt{Alg-I20}):} Assertar $|r| \le \delta(1 + n M^{n-1})$ no Passo~5 e $S_\sigma(a) + \Delta P + \Delta J_{\text{pub}}(a) = S_{\sigma'}(a)$ no Passo~6 ($O(1)$).
+        \item \emph{Base:} Teorema~\ref{teo:5.8}(iv) e Proposição~\ref{prop:5.14}.
+    \end{itemize}
+\end{itemize}
+
+\subsection{Verificação computacional}\label{sec:6.4}
+
+As Tabelas~\ref{tab:3}, \ref{tab:4} e \ref{tab:5} apresentam os resultados da verificação automatizada de propriedades (\texttt{invariantes.py} e \texttt{teste\_mutacao.py}), totalizando zero violações em todas as bases.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{@{}llccc@{\hspace{2em}}llccc@{}}
+\toprule
+\textbf{Cód.} & \textbf{Invariante} & \textbf{Uso} & \textbf{Casos} & \textbf{Viol.} & \textbf{Cód.} & \textbf{Invariante} & \textbf{Uso} & \textbf{Casos} & \textbf{Viol.} \\
+\midrule
+I1  & Anexação apenas     & E & 2.000 & 0 & I11 & Linearidade de $V$    & T & 2.000 & 0 \\
+I2  & Imutabilidade       & A & 4.000 & 0 & I12 & Inteiro e limitado    & E & 4.000 & 0 \\
+I3  & Localidade temporal & T & 4.000 & 0 & I13 & Fluxo inteiro         & E & 4.000 & 0 \\
+I4  & Ordem de registro   & T & 2.000 & 0 & I14 & Movimento $\ge 0$     & E & 4.000 & 0 \\
+I5  & Simultâneos         & T & 2.000 & 0 & I15 & Conservação           & E & 4.000 & 0 \\
+I6  & Estorno neutro      & T & 4.000 & 0 & I16 & Dominância (trunc.)   & T & 2.000 & 0 \\
+I7  & Identidade          & T & 2.000 & 0 & I17 & Controle em $V$       & A & 4.000 & 0 \\
+I8  & Cociclo exato       & T & 2.000 & 0 & I18 & Composicionalidade    & A & 4.000 & 0 \\
+I9  & Invertibilidade     & A & 2.000 & 0 & I19 & Banda de guarda       & E & 4.000 & 0 \\
+I10 & Monotonia           & T & 4.000 & 0 & I20 & Resíduo de fechamento & E & 4.000 & 0 \\
+\bottomrule
+\end{tabular}
+\caption{Verificação dos 20 invariantes: casos verificados e violações (\textbf{E}: assertiva em execução, \textbf{A}: auditoria, \textbf{T}: suíte de testes).}
+\label{tab:3}
+\end{table}
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{@{}llc@{}}
+\toprule
+\textbf{Defeito injetado (mutante)} & \textbf{Invariantes que o detectam} & \textbf{Detecções (em 300)} \\
+\midrule
+Ponto de controle guarda $S$ em vez de $V$          & I18                          & 206 \\
+Ponto de controle deslocado em um dia               & I18                          & 226 \\
+Fator acumulado truncado (cociclo aproximado)       & I4, I8                       & 253, 269 \\
+$S$ calculado pelo método iterativo (legado)        & I12, I13, I17, I18, I19, I20 & 230 a 300 \\
+Banda de guarda subestimada ($g_k \equiv 0$, $q=2$) & I19                          & 300 \\
+Data valor deslocada em um dia                      & I3, I4, I18                  & 109, 211, 206 \\
+\bottomrule
+\end{tabular}
+\caption{Sensibilidade da suíte de invariantes a seis defeitos injetados.}
+\label{tab:4}
+\end{table}
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{@{}cccc@{}}
+\toprule
+\textbf{Base $B$} & \textbf{Horizonte $n$} & \textbf{Verificações (I1 a I20)} & \textbf{Violações} \\
+\midrule
+252 & 21 & 32.000 & 0 \\
+360 & 30 & 32.000 & 0 \\
+365 & 31 & 32.000 & 0 \\
+\bottomrule
+\end{tabular}
+\caption{Verificação dos 20 invariantes nas três bases de contagem.}
+\label{tab:5}
+\end{table}
+
+\section{Exemplos numéricos em três cenários}\label{sec:7}
+
+Taxa ilustrativa $\text{DI} = 10{,}65\%$ a.a.\ constante, base $B = 252$, fator diário truncado em 8 casas $f = 1{,}00040167$, $\rho = \lfloor \cdot \rfloor$ (truncamento), calendário de outubro de 2026 ($12/10$ feriado nacional), montantes em centavos (\texttt{gera\_exemplos.py}).
+
+\subsection{Cenário A: caso base, cinco dias úteis contíguos}\label{sec:7.1}
+
+Aplicação de $\text{R\$}\,10.000{,}00$ ($x_0 = P_0 = 1.000.000$ centavos, fechada em sexta-feira 16/10), sem eventos intermediários, de segunda-feira 19/10 ($k=1$) a sexta-feira 23/10 ($k=5$).
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{@{}lcclcccccc@{}}
+\toprule
+\textbf{Data} & $k$ & $\theta_k = k/252$ & \multicolumn{1}{c}{$f_k$} & $F(0,k)$ & $V_k$ & $S_k$ & $D_k$ & $y_k$ & $d_k$ \\
+\midrule
+19/10 seg & 1 & $0{,}003968$ & $1{,}00040167$ & $1{,}0004016700$ & $1.000.401{,}6700$ & $1.000.401$ & $401$ & $1.000.401$ & $0$ \\
+20/10 ter & 2 & $0{,}007936$ & $1{,}00040167$ & $1{,}0008035013$ & $1.000.803{,}5013$ & $1.000.803$ & $402$ & $1.000.802$ & $1$ \\
+21/10 qua & 3 & $0{,}011904$ & $1{,}00040167$ & $1{,}0012054940$ & $1.001.205{,}4940$ & $1.001.205$ & $402$ & $1.001.203$ & $2$ \\
+22/10 qui & 4 & $0{,}015873$ & $1{,}00040167$ & $1{,}0016076482$ & $1.001.607{,}6482$ & $1.001.607$ & $402$ & $1.001.605$ & $2$ \\
+23/10 sex & 5 & $0{,}019841$ & $1{,}00040167$ & $1{,}0020099640$ & $1.002.009{,}9640$ & $1.002.009$ & $402$ & $1.002.007$ & $2$ \\
+\bottomrule
+\end{tabular}
+\caption{Cenário A. Truncamento, $x_0 = 1.000.000$. Inversão exata: $\Phi_{5 \to 0}(V_5) = V_5 / F(0,5) = 1.000.000{,}0000$.}
+\label{tab:6}
+\end{table}
+
+\subsection{Cenário B: evento retroativo e segregação inteira exata ($\Delta P + \Delta J_{\text{pub}}$)}\label{sec:7.2}
+
+Mesma aplicação, com aporte de $\text{R\$}\,5.000{,}00$ ($a = 500.000$ centavos) de data valor terça-feira 20/10 ($k=2$, convenção de fechamento da Observação~\ref{obs:1.5}), registrado apenas na sexta-feira 23/10.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{@{}lccccccc@{}}
+\toprule
+\textbf{Data} & $k$ & $V_k^\sigma$ & $S_k^\sigma$ & $V_k^{\sigma'}$ & $S_k^{\sigma'}$ & $\Delta V_k = a\,F(2,k)$ & $\Delta S_k = S_k^{\sigma'} - S_k^\sigma$ \\
+\midrule
+19/10 seg & 1 & $1.000.401{,}6700$ & $1.000.401$ & $1.000.401{,}6700$ & $1.000.401$ & $0{,}0000$       & $0$ \\
+20/10 ter & 2 & $1.000.803{,}5013$ & $1.000.803$ & $1.500.803{,}5013$ & $1.500.803$ & $500.000{,}0000$ & $500.000$ \\
+21/10 qua & 3 & $1.001.205{,}4940$ & $1.001.205$ & $1.501.406{,}3290$ & $1.501.406$ & $500.200{,}8350$ & $500.201$ \\
+22/10 qui & 4 & $1.001.607{,}6482$ & $1.001.607$ & $1.502.009{,}3989$ & $1.502.009$ & $500.401{,}7506$ & $500.402$ \\
+23/10 sex & 5 & ---                & ---         & $1.502.612{,}7110$ & $1.502.612$ & $500.602{,}7470$ & --- \\
+\bottomrule
+\end{tabular}
+\caption{Cenário B. $a = 500.000$ centavos, $t_v = 20/10$, $t_c = 23/10$; truncamento.}
+\label{tab:7}
+\end{table}
+
+\textbf{Leitura e validação do Passo~6(b) (Não-aditividade de $\rho$):} Na linha $k=3$ ($21/10$), o ajuste ideal é $\Delta V_3 = 500.200{,}8350$ ($\Delta P = 500.000$ e $\Delta J_{\text{ideal}} = 200{,}8350$). Se $\Delta J_{\text{ideal}}$ fosse truncado isoladamente ($\lfloor 200{,}8350 \rfloor = 200$), a soma $\Delta P + 200 = 500.200$ divergiria em $1$ centavo de $\Delta S_3 = S_3^{\sigma'} - S_3^\sigma = 1.501.406 - 1.001.205 = 500.201$ (pois as frações sub-centavo $0{,}4940 + 0{,}8350 = 1{,}3290$ cruzaram o inteiro). Pela regra de diferença inteira do Passo~6(b) do Algoritmo~\ref{alg:5.13}, tem-se $\Delta J_{\text{pub}}(3) = \Delta S_3 - \Delta P = 500.201 - 500.000 = 201$ centavos, fechando exatamente $S_3^\sigma + \Delta P + \Delta J_{\text{pub}}(3) = 1.501.406 = S_3^{\sigma'}$.
+
+\subsection{Cenário C: feriado, evento em dia não útil e rendimento sub-centavo}\label{sec:7.3}
+
+Saldo inicial de $\text{R\$}\,10{,}00$ ($1.000$ centavos, fechado em quinta-feira 08/10), com aporte de $\text{R\$}\,5{,}00$ ($500$ centavos) com data valor no feriado de segunda-feira 12/10.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{@{}llccccccr@{}}
+\toprule
+\textbf{Data} & \textbf{Tipo} & $N(t_0, t)$ & $252\,P(t)$ & \textbf{Fator $f$ aplicado} & $V(t)$ & $y(t)$ & $S(t)$ & $d(t)$ \\
+\midrule
+08/10 qui & âncora   & 0 & $0{,}00$ & ---            & $1.000{,}0000$ & $1.000$ & $1.000$ & $0$ \\
+09/10 sex & útil     & 1 & $1{,}00$ & $1{,}00040167$ & $1.000{,}4016$ & $1.000$ & $1.000$ & $0$ \\
+10/10 sáb & não útil & 1 & $1{,}25$ & $1$ (platô)    & $1.000{,}4016$ & $1.000$ & $1.000$ & $0$ \\
+11/10 dom & não útil & 1 & $1{,}50$ & $1$ (platô)    & $1.000{,}4016$ & $1.000$ & $1.000$ & $0$ \\
+12/10 seg & feriado  & 1 & $1{,}75$ & $1$ (+ aporte) & $1.500{,}4016$ & $1.500$ & $1.500$ & $0$ \\
+13/10 ter & útil     & 2 & $2{,}00$ & $1{,}00040167$ & $1.501{,}0043$ & $1.500$ & $1.501$ & $1$ \\
+14/10 qua & útil     & 3 & $3{,}00$ & $1{,}00040167$ & $1.501{,}6072$ & $1.500$ & $1.501$ & $1$ \\
+15/10 qui & útil     & 4 & $4{,}00$ & $1{,}00040167$ & $1.502{,}2103$ & $1.500$ & $1.502$ & $2$ \\
+\bottomrule
+\end{tabular}
+\caption{Cenário C. Aporte $a = 500$ centavos em $t_v = 12/10$ (feriado), $t_c = 13/10$; truncamento.}
+\label{tab:8}
+\end{table}
+
+\section{Relação dos invariantes com as normas do Banco Central}\label{sec:8}
+
+As Tabelas~\ref{tab:9} e \ref{tab:10} consolidam o mapeamento entre as exigências regulatórias do Banco Central do Brasil e os 20 invariantes do BiChronos Engine.
+
+\begin{table}[htbp]
+\centering
+\footnotesize
+\renewcommand{\arraystretch}{1.25}
+\begin{tabularx}{\textwidth}{@{}l >{\raggedright\arraybackslash}p{3.6cm} X >{\raggedright\arraybackslash}p{2.4cm} l@{}}
+\toprule
+\textbf{Cód.} & \textbf{Norma de referência} & \textbf{Exigência regulatória (paráfrase técnica)} & \textbf{Invariantes que a sustentam} & \textbf{Fonte} \\
+\midrule
+N1 & Circular BCB 1.273/1987 (COSIF), Normas Básicas, cap.\ 1; Res.\ BCB 92/2021 & Escrituração por regime de competência em moeda nacional, segregação Principal/Juros $(P, J)$ e conciliação com o Razão Geral ($R_k^{\text{GL}}$). & I1, I2, I4, I6, I12, I15, I20 & P, S \\
+N2 & Res.\ CMN 4.966/2021 e Res.\ BCB 352/2023 (vigentes desde 01/01/2025) & Mensuração pelo custo amortizado por taxa de juros efetiva, equalizando o valor presente dos fluxos ao valor contábil bruto. & I7, I8, I9, I14 & P, S \\
+N3 & CPC 23, recepcionado pela Res.\ CMN 4.924/2021, art.\ 2\textsuperscript{o}, III & Retificação de erros de períodos anteriores: efeito retroativo identificável ($\Delta P + \Delta J_{\text{pub}}$) e preservação do dado original. & I2, I3, I6, I17, I18, I20 & S \\
+N4 & Res.\ CMN 4.968/2021, art.\ 5\textsuperscript{o} (controles internos) & Sistemas de controles internos para processamento eletrônico com integridade e trilha de auditoria adequada. & I1, I2, I15, I18, I19, I20 & S \\
+N5 & Res.\ Conjunta CMN/BCB n\textsuperscript{o} 18/2025, art.\ 3\textsuperscript{o}, V, a & Testes de qualidade pré-envio, revisões e reconciliações exatas entre dados reportados e sistemas internos. & I15, I20 & S \\
+N6 & Res.\ CMN 4.910/2021 e Res.\ CMN 5.067/2023 (auditoria independente) & Auditoria independente suportada por recálculo determinístico a partir de bases de eventos reprodutíveis. & I2, I18 & P, S \\
+N7 & Convenções de mercado (ANBIMA/B3) e contratos & Base 252 dias úteis ou 360/365 dias corridos; calendário de feriados e truncamento do fator diário. & I7, I8 & S \\
+N8 & Política institucional de arredondamento e fração & Definição documentada do operador $\rho$, precisão $q$, modalidade de baixa parcial e fração no fechamento. & I12, I13, I16, I19, I20 & --- \\
+\bottomrule
+\end{tabularx}
+\caption{Normas aplicáveis, exigências funcionais e invariantes matemáticos correspondentes.}
+\label{tab:9}
+\end{table}
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{@{}lll@{\hspace{2.5em}}lll@{}}
+\toprule
+\textbf{Cód.} & \textbf{Invariante} & \textbf{Normas associadas} & \textbf{Cód.} & \textbf{Invariante} & \textbf{Normas associadas} \\
+\midrule
+I1  & Anexação apenas     & N1, N4           & I11 & Linearidade de $V$    & --- (estrutural) \\
+I2  & Imutabilidade       & N1, N3, N4, N6   & I12 & Inteiro e limitado    & N1, N8 \\
+I3  & Localidade temporal & N3               & I13 & Fluxo inteiro         & N8 \\
+I4  & Ordem de registro   & N1               & I14 & Movimento $\ge 0$     & N2 \\
+I5  & Simultâneos         & --- (estrutural) & I15 & Conservação           & N1, N4, N5 \\
+I6  & Estorno neutro      & N1, N3           & I16 & Dominância (trunc.)   & N8 \\
+I7  & Identidade          & N2, N7           & I17 & Controle em $V$       & N3 \\
+I8  & Cociclo exato       & N2, N7           & I18 & Composicionalidade    & N3, N4, N6 \\
+I9  & Invertibilidade     & N2               & I19 & Banda de guarda       & N4, N8 \\
+I10 & Monotonia           & --- (estrutural) & I20 & Resíduo de fechamento & N1, N3, N4, N5, N8 \\
+\bottomrule
+\end{tabular}
+\caption{Matriz de rastreabilidade bidirecional: invariante $\leftrightarrow$ norma.}
+\label{tab:10}
+\end{table}
+
+\section*{Anexo: Síntese das melhorias incorporadas na Versão 8.0}
+
+Além de todas as correções estruturais consolidadas na v7, a **Versão 8.0** incorpora o fechamento dos 7 pontos avançados de coesão matemática, financeira e contábil:
+\begin{enumerate}[label=\textbf{\arabic*.}]
+    \item \textbf{Reconciliação de Competência Agregada e Partidas Dobradas no Razão Geral (Observação~\ref{obs:5.8b} e Passo~4 do Algoritmo~\ref{alg:5.13}):} Formalizada a rubrica de Provisão de Frações Sub-Centavo de Competência $R_k^{\text{GL}} = \rho(\sum_i V_k^{(i)}) - \sum_i S_k^{(i)}$, conciliando a soma dos extratos individuais com o passivo econômico total da carteira no Balancete COSIF.
+    \item \textbf{Decomposição Patrimonial Bidimensional $(P_k, J_k)$ (Observação~\ref{obs:2.8}, Hipótese~H3 e Definição~\ref{def:5.7}):} Acoplada ao estado $V_k$ a separação contábil explícita entre Principal $P_k$ e Juros Acumulados $J_k = V_k - P_k$ ($J_{k,\text{pub}} = S_k - P_k$).
+    \item \textbf{Modalidades de Retirada Parcial --- Translação vs.\ Baixa Proporcional \emph{Pro-Rata} (Hipótese~H3(iii) e Passo~2 do Algoritmo~\ref{alg:5.13}):} Diferenciada a movimentação monetária inteira (Modalidade A) da liquidação parcial proporcional de títulos/cotas por fração $\alpha_k \in (0, 1)$ (Modalidade B, que baixa proporcionalmente $P_k, J_k$ e a fração sub-centavo).
+    \item \textbf{Delimitação da Cunha Tributária --- IOF/IRRF e Lotes PEPS (Observação~\ref{obs:1.6}):} Explicitado que a superposição linear (Corolário~\ref{cor:4.5} e I11) governa saldos brutos de impostos, e que eventos retroativos anteriores a resgates tributados acionam o reprocessamento da árvore PEPS a partir do ponto de controle $v_*$.
+    \item \textbf{Formulação da EDO sob Condições de Carathéodory (Hipótese~H2, Lema~\ref{lem:3.1} e Teorema~\ref{teo:3.2}):} Substituída a exigência de continuidade temporal clássica $f \in C^1(\mathbb{R}^2)$ pelas condições de Carathéodory ($f$ mensurável em $\theta$ e $C^1$ em $x$), legitimando rigorosamente taxas em escada ($L^\infty_{\text{loc}}$) e o suporte nulo nos feriados sem perda da estrutura de difeomorfismo espacial $C^1$.
+    \item \textbf{Convenção Intradiária de Pernoite \emph{Overnight} e Fechamento (Observação~\ref{obs:1.5}):} Declarada formalmente a convenção de fechamento ($f_k$ remunera o pernoite $d_{k-1} \to d_k$ e $a_k$ ingressa no fechamento de $d_k$ para render em $f_{k+1}$).
+    \item \textbf{Segregação Inteira Exata sob Não-Aditividade de $\rho$ (Passo~6(b) do Algoritmo~\ref{alg:5.13}, Invariante~I20 e Leitura da Tabela~\ref{tab:7}):} Definido $\Delta J_{\text{pub}}(a) := (S_{\sigma'}(a) - S_\sigma(a)) - \Delta P$, eliminando a divergência de $1$ centavo decorrente da soma das partes fracionárias de $V_a^\sigma$ e $\Delta V(a)$.
+\end{enumerate}
+
+\begin{thebibliography}{99}
+\bibitem{Brezis2011} H. Brezis. \emph{Functional Analysis, Sobolev Spaces and Partial Differential Equations}. Springer, 2011.
+\bibitem{CoddingtonLevinson1955} E. A. Coddington, N. Levinson. \emph{Theory of Ordinary Differential Equations}. McGraw-Hill, 1955.
+\bibitem{Hartman2002} P. Hartman. \emph{Ordinary Differential Equations}. 2.\textsuperscript{a} ed., SIAM, 2002.
+\bibitem{HirschSmaleDevaney2013} M. W. Hirsch, S. Smale, R. L. Devaney. \emph{Differential Equations, Dynamical Systems, and an Introduction to Chaos}. 3.\textsuperscript{a} ed., Academic Press, 2013.
+\bibitem{LimaAnalise2} E. L. Lima. \emph{Curso de Análise}, vol.\ 2. Projeto Euclides, IMPA.
+\bibitem{Sotomayor1979} J. Sotomayor. \emph{Lições de Equações Diferenciais Ordinárias}. Projeto Euclides, IMPA, 1979.
+\bibitem{Higham2002} N. J. Higham. \emph{Accuracy and Stability of Numerical Algorithms}. 2.\textsuperscript{a} ed., SIAM, 2002.
+\bibitem{Muller2018} J.-M. Muller et al. \emph{Handbook of Floating-Point Arithmetic}. 2.\textsuperscript{a} ed., Birkhäuser, 2018.
+\bibitem{Ziv1991} A. Ziv. Fast evaluation of elementary mathematical functions with correctly rounded last bit. \emph{ACM Transactions on Mathematical Software}, 17(3):410--423, 1991.
+\bibitem{Date2014} C. J. Date, H. Darwen, N. A. Lorentzos. \emph{Time and Relational Theory: Temporal Databases in the Relational Model and SQL}. 2.\textsuperscript{a} ed., Morgan Kaufmann, 2014.
+\bibitem{Fowler2021} M. Fowler. \emph{Bitemporal History}. \texttt{martinfowler.com}, 2021.
+\bibitem{JensenSnodgrass1999} C. S. Jensen, R. T. Snodgrass. Temporal data management. \emph{IEEE Transactions on Knowledge and Data Engineering}, 11(1):36--44, 1999.
+\bibitem{Kulkarni2012} K. Kulkarni, J.-E. Michels. Temporal features in SQL:2011. \emph{SIGMOD Record}, 41(3):34--43, 2012.
+\bibitem{Snodgrass1999} R. T. Snodgrass. \emph{Developing Time-Oriented Database Applications in SQL}. Morgan Kaufmann, 1999.
+\bibitem{AssafNeto} A. Assaf Neto. \emph{Matemática Financeira e suas Aplicações}. Atlas.
+\bibitem{Fabozzi2006} F. J. Fabozzi. \emph{Fixed Income Mathematics}. 4.\textsuperscript{a} ed., McGraw-Hill, 2006.
+\bibitem{ISDA2006} ISDA. \emph{2006 ISDA Definitions}. International Swaps and Derivatives Association, 2006.
+\bibitem{IASB} IASB. \emph{IFRS 9 Financial Instruments} (2014); \emph{IAS 8 Accounting Policies, Changes in Accounting Estimates and Errors}. IFRS Foundation.
+\bibitem{N1} Banco Central do Brasil. Circular n\textsuperscript{o} 1.273/1987 (COSIF), Normas Básicas, cap.\ 1; Resolução BCB n\textsuperscript{o} 92/2021.
+\bibitem{N2} Conselho Monetário Nacional. Resolução CMN n\textsuperscript{o} 4.966/2021. Banco Central do Brasil. Resolução BCB n\textsuperscript{o} 352/2023 e alterações posteriores; Voto do BC n\textsuperscript{o} 60/2023.
+\bibitem{N3} Comitê de Pronunciamentos Contábeis. CPC 23 (2009), recepcionado pela Resolução CMN n\textsuperscript{o} 4.924/2021, art.\ 2\textsuperscript{o}, III.
+\bibitem{N4} Conselho Monetário Nacional. Resolução CMN n\textsuperscript{o} 4.968/2021 (Sistema de Controles Internos), art.\ 5\textsuperscript{o}.
+\bibitem{N5} Conselho Monetário Nacional e Banco Central do Brasil. Resolução Conjunta n\textsuperscript{o} 18/2025 (Qualidade das informações), art.\ 3\textsuperscript{o}, V, a.
+\bibitem{N6} Conselho Monetário Nacional. Resolução CMN n\textsuperscript{o} 4.910/2021 e Resolução CMN n\textsuperscript{o} 5.067/2023 (Auditoria independente); Cosif, subseção 20.1.
+\bibitem{N7} B3 e ANBIMA. Metodologia vigente do fator DI e calendário nacional de feriados bancários.
+\end{thebibliography}
+
+\end{document}
